@@ -16,6 +16,7 @@
     "profile": "spark-transport",
     "localMcpUrl": "http://127.0.0.1:8765/mcp",
     "clientVersion": "v0.0.14",
-    "clientDir": "tools/tunnel-client"
+    "clientDir": "tools/tunnel-client",
+    "controlPlaneApiKeyRef": "env:CONTROL_PLANE_API_KEY"
   }
 }
