@@ -1,10 +1,12 @@
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   DEFAULT_COMMAND_TIMEOUT_MS,
   DEFAULT_HEALTH_PATH,
   DEFAULT_HOST,
+  DEFAULT_MAX_COMMAND_OUTPUT_BYTES,
   DEFAULT_MAX_READ_BYTES,
   DEFAULT_MCP_PATH,
   DEFAULT_PORT,
@@ -29,6 +31,15 @@ function readJsonIfExists(filePath) {
   }
 }
 
+function defaultPrivateStateDir() {
+  if (process.platform === 'win32') {
+    const base = process.env.LOCALAPPDATA || process.env.APPDATA || os.homedir();
+    return path.join(base, 'SPARK_Transport');
+  }
+  const base = process.env.XDG_STATE_HOME || path.join(os.homedir(), '.local', 'state');
+  return path.join(base, 'SPARK_Transport');
+}
+
 export function loadConfig(overrides = {}) {
   const env = process.env;
   const configPath = path.resolve(overrides.configPath ?? env.SPARK_TRANSPORT_CONFIG ?? path.join(PROJECT_ROOT, 'config', 'spark-transport.local.json'));
@@ -48,7 +59,8 @@ export function loadConfig(overrides = {}) {
     healthPath: overrides.healthPath ?? env.SPARK_TRANSPORT_HEALTH_PATH ?? daemon.healthPath ?? DEFAULT_HEALTH_PATH,
     maxReadBytes: positiveInteger(overrides.maxReadBytes ?? env.SPARK_TRANSPORT_MAX_READ_BYTES ?? daemon.maxReadBytes, DEFAULT_MAX_READ_BYTES, 'maxReadBytes'),
     commandTimeoutMs: positiveInteger(overrides.commandTimeoutMs ?? env.SPARK_TRANSPORT_COMMAND_TIMEOUT_MS ?? daemon.commandTimeoutMs, DEFAULT_COMMAND_TIMEOUT_MS, 'commandTimeoutMs'),
-    stateDir: path.resolve(overrides.stateDir ?? env.SPARK_TRANSPORT_STATE_DIR ?? daemon.stateDir ?? path.join(PROJECT_ROOT, '.runtime')),
+    maxCommandOutputBytes: positiveInteger(overrides.maxCommandOutputBytes ?? env.SPARK_TRANSPORT_MAX_COMMAND_OUTPUT_BYTES ?? daemon.maxCommandOutputBytes, DEFAULT_MAX_COMMAND_OUTPUT_BYTES, 'maxCommandOutputBytes'),
+    stateDir: path.resolve(overrides.stateDir ?? env.SPARK_TRANSPORT_STATE_DIR ?? daemon.stateDir ?? defaultPrivateStateDir()),
     recycleBin: daemon.recycleBin !== false,
     tunnel: {
       enabled: tunnel.enabled !== false,
