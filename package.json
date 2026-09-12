@@ -1,8 +1,8 @@
 {
   "name": "spark-transport",
-  "version": "0.0.0",
+  "version": "0.0.1",
   "private": true,
-  "description": "SPARK_Transport MCP daemon - Sprint-2 candidate",
+  "description": "SPARK_Transport MCP Agent Core - CRUD and simple execution Small PoC",
   "type": "module",
   "engines": { "node": ">=20" },
   "scripts": {
