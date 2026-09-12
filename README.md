@@ -73,9 +73,7 @@ error?
 
 Default runtime/recovery/ledger state는 repository가 아닌 user-private local state directory에 저장됩니다. `SPARK_TRANSPORT_STATE_DIR`로 test/development override가 가능합니다.
 
-## 4. Windows 실행
-
-### 4.1. Config 준비
+## 4. Windows config
 
 최초 한 번:
 
@@ -84,7 +82,19 @@ copy config\spark-transport.example.json config\spark-transport.local.json
 notepad config\spark-transport.local.json
 ```
 
-최소한 `daemon.allowedRoot`와 `tunnel.id`를 실제 환경에 맞게 수정합니다. `config\spark-transport.local.json`은 Git에 포함하지 않습니다.
+최소한 다음을 실제 환경에 맞게 수정합니다.
+
+- `daemon.allowedRoot`
+- `tunnel.id`
+- `tunnel.controlPlaneApiKeyFile`
+
+Windows path는 JSON escaping 문제를 피하기 위해 `/` 표기를 권장합니다.
+
+예:
+
+```json
+"allowedRoot": "E:/test"
+```
 
 `tunnel.clientDir` 기본값:
 
@@ -98,21 +108,26 @@ tools/tunnel-client
 tools\tunnel-client\tunnel-client.exe
 ```
 
-## 5. Tunnel runtime secret
+## 5. Tunnel key file
 
-Tracked JSON config에 actual secret 값을 저장하지 않습니다. `env:` 또는 `file:` reference를 사용합니다.
+0.0.1에서는 tunnel Runtime API key를 **파일 하나로 고정**해서 읽습니다. Environment variable이나 `env:` / `file:` prefix를 config에 쓰지 않습니다.
 
-기본 예:
+기본 config:
 
 ```json
-"controlPlaneApiKeyRef": "env:CONTROL_PLANE_API_KEY"
+"controlPlaneApiKeyFile": ".runtime/secrets/control-plane-api-key.txt"
 ```
 
-CMD:
+파일 생성:
 
 ```cmd
-set "CONTROL_PLANE_API_KEY=실제_RUNTIME_KEY"
+mkdir .runtime\secrets 2>NUL
+notepad .runtime\secrets\control-plane-api-key.txt
 ```
+
+파일에는 실제 Runtime API key 한 줄만 저장합니다.
+
+`.runtime/` 전체는 `.gitignore` 대상이므로 key file은 Git에 올라가지 않습니다.
 
 ## 6. Lifecycle
 
@@ -125,7 +140,9 @@ SPARK_Transport stop
 SPARK_Transport validate
 ```
 
-`status`는 0.0.1부터 recent operation ledger도 표시합니다.
+`start`는 `[S2-01]`부터 `[S2-09]`까지 순차 step ID를 출력합니다. Config JSON이 잘못되면 `[S2-01] FAIL`로 종료하고, daemon start가 실패하면 `[S2-03]`에서 daemon log tail을 바로 표시합니다.
+
+`status`는 daemon health와 recent operation ledger도 표시합니다.
 
 ## 7. Delete / Recycle Bin Policy
 
@@ -177,13 +194,6 @@ GitHub Actions release-version verification:
 | Ubuntu / Node 24 | **PASS** |
 | Windows / Node 24 | **PASS** |
 
-Final version test run:
-
-```text
-Run ID: 34684217502
-SHA: 5014a3e816c4ee6af57dd6fe6c300199789a3f93
-```
-
 Detailed evidence: `evidence/SPRINT2_TEST_REPORT.md`.
 
 ## 10. Brain Host Cost Strategy
@@ -203,6 +213,4 @@ CatDesk가 제시하는 `3,000 messages/week`는 historical GPT-5.5 Chat allowan
 
 ## 11. Remaining Deployment Acceptance
 
-GitHub source/automated 0.0.1 gate는 PASS입니다. 현재 사용자의 이미 실행 중인 SPARK_Transport daemon이 구버전 read-only deployment라면 GitHub 0.0.1을 pull/restart한 뒤 ChatGPT에서 mutation + `run_command` live E2E를 수행해야 합니다.
-
-이 live deployment check와 independent Architecture Peer review는 source/CI gate와 별도로 관리합니다.
+GitHub source/automated 0.0.1 gate는 PASS입니다. Local PC에서 최신 main을 pull/restart한 뒤 ChatGPT에서 mutation + `run_command` live E2E를 수행합니다.
