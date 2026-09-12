@@ -23,7 +23,22 @@ Write-Host '[S2-DAEMON-02] PASS'
 
 if($config.tunnel.enabled -eq $false){Write-Host '[S2-TUN-00] Tunnel disabled by config. Done.';exit 0}
 if(-not $config.tunnel.id -or $config.tunnel.id -like 'tunnel_x*'){throw '[S2-TUN-01] Set tunnel.id in local config'}
-if(-not $env:CONTROL_PLANE_API_KEY){throw '[S2-TUN-01] CONTROL_PLANE_API_KEY is not set in this shell. Secret is intentionally not stored in config.'}
+$keyRef=$config.tunnel.controlPlaneApiKeyRef
+if(-not $keyRef){$keyRef='env:CONTROL_PLANE_API_KEY'}
+if($keyRef -like 'env:*'){
+  $envName=$keyRef.Substring(4)
+  if(-not $envName){throw '[S2-TUN-01] Invalid env: secret reference'}
+  $envValue=[Environment]::GetEnvironmentVariable($envName)
+  if(-not $envValue){throw "[S2-TUN-01] Secret environment variable '$envName' is not set"}
+}elseif($keyRef -like 'file:*'){
+  $secretPath=$keyRef.Substring(5)
+  if(-not [System.IO.Path]::IsPathRooted($secretPath)){$secretPath=Join-Path $root $secretPath}
+  if(-not (Test-Path $secretPath)){throw "[S2-TUN-01] Secret file not found: $secretPath"}
+  $secretPath=(Resolve-Path $secretPath).Path
+  $keyRef="file:$secretPath"
+}else{
+  throw '[S2-TUN-01] controlPlaneApiKeyRef must use env:VARNAME or file:path'
+}
 $clientDir=$config.tunnel.clientDir
 if(-not [System.IO.Path]::IsPathRooted($clientDir)){$clientDir=Join-Path $root $clientDir}
 & (Join-Path $root 'scripts\bootstrap-tunnel.ps1') -Version $config.tunnel.clientVersion -ClientDir $clientDir
@@ -35,7 +50,7 @@ Write-Host "[S2-TUN-05] Checking tunnel profile: $profile"
 & $client doctor --profile $profile --explain *> (Join-Path $runtime 'tunnel-doctor.log')
 if($LASTEXITCODE -ne 0){
   Write-Host '[S2-TUN-06] Profile not ready; initializing no-auth MCP profile...'
-  & $client init --sample sample_mcp_remote_no_auth --profile $profile --tunnel-id $config.tunnel.id --mcp-server-url $config.tunnel.localMcpUrl
+  & $client init --sample sample_mcp_remote_no_auth --profile $profile --tunnel-id $config.tunnel.id --mcp-server-url $config.tunnel.localMcpUrl --control-plane-api-key-ref $keyRef
   if($LASTEXITCODE -ne 0){throw 'tunnel profile init failed'}
   & $client doctor --profile $profile --explain
   if($LASTEXITCODE -ne 0){throw 'tunnel doctor failed after init'}
