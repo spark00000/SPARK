@@ -99,3 +99,13 @@ npm test
 ```
 
 현재 build container: **11 PASS / 0 FAIL / 0 SKIP**. Windows 실제 Recycle Bin, NTFS junction, `start.cmd`+Tunnel, ChatGPT mutation/command E2E가 완료되기 전에는 version을 `0.0.1`로 올리지 않습니다.
+
+## 9. Windows Sprint-2 local validation
+
+`start.cmd`가 성공한 뒤 실제 mutation/command/Recycle Bin path를 자동 검증하려면:
+
+```cmd
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts\validate-windows-sprint2.ps1
+```
+
+이 검증은 allowed root 안에 고유한 임시 test directory를 만들고 create/write/modify/copy/move/command/traversal/delete를 순서대로 실행합니다. 삭제는 Recycle Bin으로 보내며 마지막에 Recycle Bin enumeration 결과도 확인합니다. 자동 enumeration이 확인하지 못하면 script가 manual 확인을 요구합니다.
