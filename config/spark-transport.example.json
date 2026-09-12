@@ -1,6 +1,6 @@
 {
   "daemon": {
-    "allowedRoot": "C:\\path\\to\\allowed-folder",
+    "allowedRoot": "C:/path/to/allowed-folder",
     "host": "127.0.0.1",
     "port": 8765,
     "mcpPath": "/mcp",
@@ -17,6 +17,6 @@
     "localMcpUrl": "http://127.0.0.1:8765/mcp",
     "clientVersion": "v0.0.14",
     "clientDir": "tools/tunnel-client",
-    "controlPlaneApiKeyRef": "env:CONTROL_PLANE_API_KEY"
+    "controlPlaneApiKeyFile": ".runtime/secrets/control-plane-api-key.txt"
   }
 }
