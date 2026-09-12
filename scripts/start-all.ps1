@@ -20,14 +20,7 @@ if(-not (Test-Path $ConfigPath)){
 }
 $ConfigPath=(Resolve-Path $ConfigPath).Path
 $env:SPARK_TRANSPORT_CONFIG=$ConfigPath
-try{
-  $config=Get-Content -Raw $ConfigPath | ConvertFrom-Json
-}catch{
-  Write-Host '[S2-01] FAIL - invalid JSON in local config.' -ForegroundColor Red
-  Write-Host "[S2-01] File: $ConfigPath"
-  Write-Host "[S2-01] Detail: $($_.Exception.Message)"
-  exit 2
-}
+try{$config=Get-Content -Raw $ConfigPath | ConvertFrom-Json}catch{Fail-Step 'S2-01' "invalid JSON in local config: $($_.Exception.Message)"}
 Write-Host "[S2-01] PASS - Config loaded: $ConfigPath"
 
 Write-Host '[S2-02] Checking Node.js...'
@@ -56,8 +49,6 @@ try {
       Write-Host '[S2-03] ---- daemon log tail ----'
       Get-Content -Path $daemonLog -Tail 40
       Write-Host '[S2-03] ---- end daemon log ----'
-    }else{
-      Write-Host '[S2-03] Daemon log file does not exist.'
     }
     throw '[S2-03] daemon start failed'
   }
@@ -73,15 +64,15 @@ Write-Host "[S2-04] PASS - daemon healthy, version=$($r.version)"
 if($config.tunnel.enabled -eq $false){Write-Host '[S2-05] PASS - Tunnel disabled by config. Startup complete.';exit 0}
 if(-not $config.tunnel.id -or $config.tunnel.id -like 'tunnel_x*'){Fail-Step 'S2-05' 'Set tunnel.id in local config'}
 
-$keyFile=[string]$config.tunnel.controlPlaneApiKeyFile
+$keyFile=$config.tunnel.controlPlaneApiKeyFile
 if(-not $keyFile){$keyFile='.runtime/secrets/control-plane-api-key.txt'}
-$keyFile=Resolve-RepoRelative $keyFile
-if(-not (Test-Path $keyFile)){Fail-Step 'S2-05' "Tunnel key file not found: $keyFile"}
-$keyFile=(Resolve-Path $keyFile).Path
-$keyValue=(Get-Content -Raw $keyFile).Trim()
-if(-not $keyValue){Fail-Step 'S2-05' "Tunnel key file is empty: $keyFile"}
-$keyRef="file:$keyFile"
-Write-Host "[S2-05] PASS - Tunnel key file: $keyFile (value hidden)"
+$keyPath=Resolve-RepoRelative ([string]$keyFile)
+if(-not (Test-Path $keyPath)){Fail-Step 'S2-05' "Tunnel key file not found: $keyPath"}
+$keyPath=(Resolve-Path $keyPath).Path
+$keyValue=(Get-Content -Raw $keyPath).Trim()
+if(-not $keyValue){Fail-Step 'S2-05' "Tunnel key file is empty: $keyPath"}
+$keyRef="file:$keyPath"
+Write-Host "[S2-05] PASS - Tunnel key file: $keyPath (value hidden)"
 
 $clientDir=$config.tunnel.clientDir
 if(-not [System.IO.Path]::IsPathRooted($clientDir)){$clientDir=Join-Path $root $clientDir}
@@ -105,13 +96,40 @@ if($LASTEXITCODE -ne 0){
 }
 Write-Host '[S2-07] PASS - tunnel profile ready'
 
-try{$ready=Invoke-WebRequest -UseBasicParsing -TimeoutSec 1 'http://127.0.0.1:8080/readyz';if($ready.Content.Trim() -eq 'ready'){Write-Host '[S2-08] PASS - Tunnel already ready.';exit 0}}catch{}
-Write-Host '[S2-08] Starting tunnel-client...'
-$proc=Start-Process -FilePath $client -ArgumentList @('run','--profile',$profile) -WorkingDirectory $root -WindowStyle Minimized -PassThru
+try{
+  $ready=Invoke-WebRequest -UseBasicParsing -TimeoutSec 1 'http://127.0.0.1:8080/readyz'
+  if($ready.Content.Trim() -eq 'ready'){Write-Host '[S2-08] PASS - Tunnel already ready.';exit 0}
+}catch{}
+
+Write-Host '[S2-08] Starting tunnel-client with direct CreateProcess semantics...'
+$psi=New-Object System.Diagnostics.ProcessStartInfo
+$psi.FileName=$client
+$psi.Arguments="run --profile `"$profile`""
+$psi.WorkingDirectory=$root
+$psi.UseShellExecute=$false
+$psi.CreateNoWindow=$true
+$proc=New-Object System.Diagnostics.Process
+$proc.StartInfo=$psi
+try{
+  $started=$proc.Start()
+  if(-not $started){Fail-Step 'S2-08' 'tunnel-client process did not start'}
+}catch{
+  Fail-Step 'S2-08' "tunnel-client launch failed: $($_.Exception.Message)"
+}
 Set-Content -Encoding ascii (Join-Path $runtime 'tunnel-client.pid') $proc.Id
 Write-Host "[S2-08] PASS - tunnel-client started, PID=$($proc.Id)"
 
 Write-Host '[S2-09] Waiting for tunnel /readyz...'
 $deadline=(Get-Date).AddSeconds(20)
-do{Start-Sleep -Milliseconds 500;try{$ready=Invoke-WebRequest -UseBasicParsing -TimeoutSec 1 'http://127.0.0.1:8080/readyz';if($ready.Content.Trim() -eq 'ready'){Write-Host "[S2-09] PASS - tunnel ready (PID $($proc.Id))";exit 0}}catch{}}while((Get-Date)-lt$deadline)
+do{
+  Start-Sleep -Milliseconds 500
+  if($proc.HasExited){
+    Fail-Step 'S2-09' "tunnel-client exited before readyz, exitCode=$($proc.ExitCode). Check .runtime\tunnel-doctor.log and run tunnel-client.exe run --profile $profile manually for console diagnostics."
+  }
+  try{
+    $ready=Invoke-WebRequest -UseBasicParsing -TimeoutSec 1 'http://127.0.0.1:8080/readyz'
+    if($ready.Content.Trim() -eq 'ready'){Write-Host "[S2-09] PASS - tunnel ready (PID $($proc.Id))";exit 0}
+  }catch{}
+}while((Get-Date)-lt$deadline)
+try{if(-not $proc.HasExited){Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue}}catch{}
 Fail-Step 'S2-09' 'tunnel-client did not become ready within 20 seconds'
