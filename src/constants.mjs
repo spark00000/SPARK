@@ -7,6 +7,8 @@ export const DEFAULT_MCP_PATH = '/mcp';
 export const DEFAULT_HEALTH_PATH = '/health';
 export const DEFAULT_MAX_READ_BYTES = 1024 * 1024;
 export const DEFAULT_COMMAND_TIMEOUT_MS = 30000;
+export const DEFAULT_MAX_COMMAND_OUTPUT_BYTES = 64 * 1024;
+export const DEFAULT_LEDGER_STATUS_LIMIT = 10;
 export const MAX_REQUEST_BYTES = 1024 * 1024;
 
 export const META_PROTOCOL_VERSION = 'io.modelcontextprotocol/protocolVersion';
