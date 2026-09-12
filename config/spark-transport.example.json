@@ -1,0 +1,21 @@
+{
+  "daemon": {
+    "allowedRoot": "C:\\path\\to\\allowed-folder",
+    "host": "127.0.0.1",
+    "port": 8765,
+    "mcpPath": "/mcp",
+    "healthPath": "/health",
+    "maxReadBytes": 1048576,
+    "commandTimeoutMs": 30000,
+    "stateDir": ".runtime",
+    "recycleBin": true
+  },
+  "tunnel": {
+    "enabled": true,
+    "id": "tunnel_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "profile": "spark-transport",
+    "localMcpUrl": "http://127.0.0.1:8765/mcp",
+    "clientVersion": "v0.0.14",
+    "clientDir": "tools/tunnel-client"
+  }
+}

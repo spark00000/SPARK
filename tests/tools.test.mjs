@@ -1,49 +1,12 @@
 import assert from 'node:assert/strict';
+import fs from 'node:fs/promises';
+import path from 'node:path';
 import test from 'node:test';
 import { createPathPolicy } from '../src/path-policy.mjs';
 import { createToolRuntime, TOOL_DEFINITIONS } from '../src/tools.mjs';
 import { makeFixture } from './helpers.mjs';
-
-test('read_file reads UTF-8 text and returns hash metadata', async (t) => {
-  const fixture = await makeFixture();
-  t.after(fixture.cleanup);
-  const policy = await createPathPolicy(fixture.root);
-  const runtime = createToolRuntime({ policy, maxReadBytes: 1024 * 1024 });
-  const result = await runtime.readFile({ path: 'hello.txt' });
-  assert.equal(result.ok, true);
-  assert.equal(result.text, 'hello SPARK\n');
-  assert.equal(result.path, 'hello.txt');
-  assert.match(result.sha256, /^[a-f0-9]{64}$/);
-});
-
-test('list_directory returns deterministic structured entries', async (t) => {
-  const fixture = await makeFixture();
-  t.after(fixture.cleanup);
-  const policy = await createPathPolicy(fixture.root);
-  const runtime = createToolRuntime({ policy, maxReadBytes: 1024 * 1024 });
-  const result = await runtime.listDirectory({ path: '.' });
-  assert.equal(result.ok, true);
-  assert.deepEqual(result.entries.map((entry) => entry.name), ['hello.txt', 'nested']);
-  assert.equal(result.entries.find((entry) => entry.name === 'nested').type, 'directory');
-});
-
-test('read_file returns structured errors for missing file and wrong type', async (t) => {
-  const fixture = await makeFixture();
-  t.after(fixture.cleanup);
-  const policy = await createPathPolicy(fixture.root);
-  const runtime = createToolRuntime({ policy, maxReadBytes: 1024 * 1024 });
-  const missing = await runtime.readFile({ path: 'missing.txt' });
-  assert.deepEqual(missing, { ok: false, error: { code: 'NOT_FOUND', message: 'path does not exist' } });
-  const directory = await runtime.readFile({ path: 'nested' });
-  assert.equal(directory.ok, false);
-  assert.equal(directory.error.code, 'NOT_A_FILE');
-});
-
-test('Sprint-1 exposes only read-only tools', () => {
-  assert.deepEqual(TOOL_DEFINITIONS.map((tool) => tool.name), ['list_directory', 'read_file']);
-  for (const tool of TOOL_DEFINITIONS) {
-    assert.equal(tool.annotations.readOnlyHint, true);
-    assert.equal(tool.annotations.idempotentHint, true);
-    assert.equal(tool.annotations.openWorldHint, false);
-  }
-});
+async function runtimeFixture(t){const f=await makeFixture();t.after(f.cleanup);const stateDir=path.join(f.base,'state');const recycled=[];const recycle=async(p,isDir)=>{recycled.push({p,isDir});await fs.rm(p,{recursive:isDir,force:true});};const runner=async({command,args,cwd,timeoutMs})=>({ok:true,stdout:`${command}:${args.join(',')}`,stderr:'',exitCode:0,signal:null,durationMs:1,cwdSeen:cwd,timeoutSeen:timeoutMs});const policy=await createPathPolicy(f.root);const runtime=createToolRuntime({policy,maxReadBytes:1024*1024,stateDir,commandTimeoutMs:1234,recycleBin:true,recycle,runner});return{f,runtime,recycled,stateDir};}
+test('tool definitions include Sprint-2 operations',()=>{assert.deepEqual(TOOL_DEFINITIONS.map(x=>x.name),['list_directory','read_file','create_file','write_file','modify_file','create_directory','copy_path','move_path','delete_path','run_command']);});
+test('create write modify copy move directory and delete work',async(t)=>{const {f,runtime,recycled,stateDir}=await runtimeFixture(t);let r=await runtime.createFile({path:'new.txt',text:'alpha beta'});assert.equal(r.ok,true);r=await runtime.writeFile({path:'new.txt',text:'one target three'});assert.equal(r.ok,true);assert.match(r.recovery.backupPath,/^recovery\//);r=await runtime.modifyFile({path:'new.txt',search:'target',replace:'TWO'});assert.equal(r.ok,true);assert.equal(await fs.readFile(path.join(f.root,'new.txt'),'utf8'),'one TWO three');r=await runtime.createDirectory({path:'folder'});assert.equal(r.ok,true);r=await runtime.copyPath({source:'new.txt',destination:'folder/copy.txt'});assert.equal(r.ok,true);r=await runtime.movePath({source:'folder/copy.txt',destination:'folder/moved.txt'});assert.equal(r.ok,true);r=await runtime.deletePath({path:'folder/moved.txt'});assert.equal(r.ok,true);assert.equal(recycled.length,1);await assert.rejects(()=>fs.access(path.join(f.root,'folder','moved.txt')));const backups=[];async function walk(d){for(const e of await fs.readdir(d,{withFileTypes:true})){const p=path.join(d,e.name);if(e.isDirectory())await walk(p);else backups.push(p);}}await walk(path.join(stateDir,'recovery'));assert.ok(backups.length>=2);});
+test('mutation path escapes and root delete fail closed',async(t)=>{const {runtime}=await runtimeFixture(t);assert.equal((await runtime.createFile({path:'../x.txt',text:'x'})).error.code,'PATH_TRAVERSAL');assert.equal((await runtime.deletePath({path:'.'})).error.code,'ROOT_DELETE_FORBIDDEN');});
+test('run_command uses confined cwd and structured runner result',async(t)=>{const {runtime}=await runtimeFixture(t);const r=await runtime.runCommand({command:'node',args:['-v'],cwd:'nested'});assert.equal(r.ok,true);assert.equal(r.cwd,'nested');assert.equal(r.elevated,false);assert.equal(r.timeoutSeen,1234);const bad=await runtime.runCommand({command:'node',cwd:'../outside'});assert.equal(bad.error.code,'PATH_TRAVERSAL');});

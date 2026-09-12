@@ -1,7 +1,7 @@
 .runtime/
-node_modules/
-coverage/
+config/spark-transport.local.json
+tools/tunnel-client/*
+!tools/tunnel-client/.gitkeep
 *.log
 .DS_Store
 Thumbs.db
-_pArc

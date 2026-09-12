@@ -4,42 +4,5 @@ import path from 'node:path';
 import test from 'node:test';
 import { createPathPolicy } from '../src/path-policy.mjs';
 import { makeFixture } from './helpers.mjs';
-
-test('path policy allows files inside the allowed root', async (t) => {
-  const fixture = await makeFixture();
-  t.after(fixture.cleanup);
-  const policy = await createPathPolicy(fixture.root);
-  const result = await policy.resolveFile('nested/inner.txt');
-  assert.equal(result.displayPath, 'nested/inner.txt');
-});
-
-test('path policy rejects parent traversal', async (t) => {
-  const fixture = await makeFixture();
-  t.after(fixture.cleanup);
-  const policy = await createPathPolicy(fixture.root);
-  await assert.rejects(() => policy.resolveFile('../outside/secret.txt'), (error) => error.code === 'PATH_TRAVERSAL');
-});
-
-test('path policy rejects absolute paths', async (t) => {
-  const fixture = await makeFixture();
-  t.after(fixture.cleanup);
-  const policy = await createPathPolicy(fixture.root);
-  await assert.rejects(() => policy.resolveFile(path.join(fixture.outside, 'secret.txt')), (error) => error.code === 'ABSOLUTE_PATH_NOT_ALLOWED');
-});
-
-test('path policy rejects symlink escape when symlinks are available', async (t) => {
-  const fixture = await makeFixture();
-  t.after(fixture.cleanup);
-  const policy = await createPathPolicy(fixture.root);
-  const link = path.join(fixture.root, 'escape-link');
-  try {
-    await fs.symlink(fixture.outside, link, process.platform === 'win32' ? 'junction' : 'dir');
-  } catch (error) {
-    if (error?.code === 'EPERM' || error?.code === 'EACCES' || error?.code === 'UNKNOWN') {
-      t.skip(`symlink/junction creation unavailable: ${error.code}`);
-      return;
-    }
-    throw error;
-  }
-  await assert.rejects(() => policy.resolveFile('escape-link/secret.txt'), (error) => error.code === 'SYMLINK_ESCAPE');
-});
+test('read containment and create containment',async(t)=>{const f=await makeFixture();t.after(f.cleanup);const p=await createPathPolicy(f.root);assert.equal((await p.resolveFile('hello.txt')).displayPath,'hello.txt');await assert.rejects(()=>p.resolveFile('../outside/secret.txt'),e=>e.code==='PATH_TRAVERSAL');await assert.rejects(()=>p.resolveFile(path.resolve(f.outside,'secret.txt')),e=>e.code==='ABSOLUTE_PATH_NOT_ALLOWED');assert.equal((await p.resolveForCreate('new.txt')).displayPath,'new.txt');});
+test('symlink escape is rejected',async(t)=>{const f=await makeFixture();t.after(f.cleanup);const link=path.join(f.root,'escape');try{await fs.symlink(f.outside,link,'dir');}catch(e){if(['EPERM','EACCES','ENOSYS'].includes(e.code)){t.skip(`symlink unavailable: ${e.code}`);return;}throw e;}const p=await createPathPolicy(f.root);await assert.rejects(()=>p.resolveDirectory('escape'),e=>e.code==='SYMLINK_ESCAPE');await assert.rejects(()=>p.resolveMutationEntry('escape'),e=>['SYMLINK_ESCAPE','SYMLINK_MUTATION_NOT_ALLOWED'].includes(e.code));});

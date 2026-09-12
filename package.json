@@ -2,11 +2,9 @@
   "name": "spark-transport",
   "version": "0.0.0",
   "private": true,
-  "description": "SPARK_Transport Sprint-1: read-only local MCP 2026-07-28 daemon",
+  "description": "SPARK_Transport MCP daemon - Sprint-2 candidate",
   "type": "module",
-  "engines": {
-    "node": ">=20"
-  },
+  "engines": { "node": ">=20" },
   "scripts": {
     "start": "node src/cli.mjs serve",
     "daemon:start": "node src/cli.mjs start",
