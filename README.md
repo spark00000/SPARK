@@ -1,12 +1,41 @@
 # SPARK_Transport
 
-SPARK_Transport는 ChatGPT에서 사용자의 로컬 파일과 명령을 **표준 MCP(Model Context Protocol)** 로 다루기 위한 Windows 중심 Local MCP daemon입니다.
+SPARK_Transport는 AI Brain과 사용자의 local/physical capability 사이를 연결하는 **provider-neutral Agent Core**입니다. 현재 0.0.1은 ChatGPT + Secure MCP Tunnel을 Brain path로 사용하고, Windows local filesystem CRUD와 simple command execution을 표준 MCP로 제공합니다.
 
-현재 개발 상태는 **Sprint-2 candidate / version 0.0.0**입니다. Windows 실제 검증이 끝난 뒤에만 `0.0.1`로 승격합니다.
+현재 baseline은 **version 0.0.1 — CRUD + Simple Execution Small PoC**입니다. Ubuntu/Windows Node 24 GitHub Actions가 모두 PASS했습니다.
 
-## 1. Sprint-2 기능
+## 1. Architecture
 
-MCP baseline은 `2026-07-28`이며 SPARK_Transport 전용 protocol extension은 만들지 않습니다.
+```text
+AI Brain Host
+  -> Brain Gateway
+  -> SPARK Agent Core + Human UX Plane
+  -> Body Port
+  -> Physical / Execution Adapter
+```
+
+현재:
+
+```text
+ChatGPT Web/App
+  -> OpenAI Secure MCP Tunnel
+  -> MCP 2026-07-28
+  -> SPARK Agent Core
+  -> Windows Filesystem / Process / Recycle Bin
+```
+
+Future extension points에는 Claude/other Brain Host, custom SPARK UI, Computer Use, Drone/Robot/Sensor/Actuator Body adapters가 포함됩니다. Claude와 GUI/robot integration은 0.0.1에 구현하지 않았습니다.
+
+자세한 구조:
+
+- `docs/ARCH.md`
+- `docs/ARCH_REFERENCE_STUDY.md`
+- `docs/BRAIN_HOST_COMPARISON.md`
+- `docs/SWE1.md`, `docs/SWE2.md`, `docs/SWE3.md`
+
+## 2. 0.0.1 Tools
+
+MCP baseline은 `2026-07-28`이며 SPARK 전용 protocol extension은 만들지 않습니다.
 
 | Tool | 기능 |
 |---|---|
@@ -19,13 +48,34 @@ MCP baseline은 `2026-07-28`이며 SPARK_Transport 전용 protocol extension은 
 | `copy_path` | 파일/폴더 복사 |
 | `move_path` | 파일/폴더 이동/rename |
 | `delete_path` | **Windows Recycle Bin**으로 이동 |
-| `run_command` | non-elevated command 실행 |
+| `run_command` | non-elevated simple command 실행 |
 
-`run_command`는 자동으로 관리자 권한을 얻지 않습니다. 관리자 권한이 필요한 command는 실패를 반환합니다.
+모든 tool invocation은 normalized result와 unique operation ID를 반환하고 local JSONL operation ledger에 기록됩니다.
 
-## 2. Windows 실행
+## 3. Result / Operation Ledger
 
-### 2.1 Config 준비
+Result envelope의 핵심 fields:
+
+```text
+ok
+operationId
+operation
+summary
+changed
+data
+durationMs
+requiresElevation
+retryable
+error?
+```
+
+`SPARK_Transport status`는 daemon health와 최근 operation을 함께 표시합니다.
+
+Default runtime/recovery/ledger state는 repository가 아닌 user-private local state directory에 저장됩니다. `SPARK_TRANSPORT_STATE_DIR`로 test/development override가 가능합니다.
+
+## 4. Windows 실행
+
+### 4.1. Config 준비
 
 최초 한 번:
 
@@ -34,53 +84,39 @@ copy config\spark-transport.example.json config\spark-transport.local.json
 notepad config\spark-transport.local.json
 ```
 
-최소한 `daemon.allowedRoot`와 `tunnel.id`를 실제 환경에 맞게 수정합니다. `config\spark-transport.local.json`은 Git에 포함되지 않습니다.
+최소한 `daemon.allowedRoot`와 `tunnel.id`를 실제 환경에 맞게 수정합니다. `config\spark-transport.local.json`은 Git에 포함하지 않습니다.
 
-`tunnel.clientDir` 기본값은 다음입니다.
+`tunnel.clientDir` 기본값:
 
 ```text
 tools/tunnel-client
 ```
 
-따라서 실제 확인 대상은 repo 기준:
+실제 Windows binary:
 
 ```text
 tools\tunnel-client\tunnel-client.exe
 ```
 
-입니다. 없으면 시작 과정에서 공식 OpenAI release에서 다운로드합니다.
+## 5. Tunnel runtime secret
 
-### 2.2 Tunnel runtime secret
+Tracked JSON config에 actual secret 값을 저장하지 않습니다. `env:` 또는 `file:` reference를 사용합니다.
 
-실제 key 값은 tracked JSON config에 저장하지 않습니다. config에는 **secret reference**만 둡니다.
-
-기본값:
+기본 예:
 
 ```json
 "controlPlaneApiKeyRef": "env:CONTROL_PLANE_API_KEY"
 ```
 
-이 경우 현재 shell에서 한 번 설정합니다.
+CMD:
 
 ```cmd
 set "CONTROL_PLANE_API_KEY=실제_RUNTIME_KEY"
 ```
 
-shell `set`을 사용하고 싶지 않으면 gitignored local file을 사용할 수 있습니다.
+## 6. Lifecycle
 
-예:
-
-```json
-"controlPlaneApiKeyRef": "file:.runtime/secrets/control-plane-api-key.txt"
-```
-
-그리고 실제 key를 `.runtime\secrets\control-plane-api-key.txt`에 저장합니다. `.runtime/`은 Git에서 제외됩니다. 이 방식은 평문 local file이므로 Windows ACL/디스크 보안의 보호를 받으며, 더 강한 secret storage는 별도 hardening 항목입니다.
-
-OpenAI tunnel-client profile에는 literal key가 아니라 `env:` 또는 `file:` reference가 들어갑니다.
-
-### 2.3 단일 command surface
-
-root에서는 다음 하나만 사용합니다.
+Repository root에서:
 
 ```cmd
 SPARK_Transport start
@@ -89,46 +125,21 @@ SPARK_Transport stop
 SPARK_Transport validate
 ```
 
-`start` 순서:
+`status`는 0.0.1부터 recent operation ledger도 표시합니다.
 
-```text
-config -> Node -> daemon -> /health -> tunnel-client 확인/다운로드
--> SHA256 검증 -> doctor/init -> tunnel run -> /readyz
-```
+## 7. Delete / Recycle Bin Policy
 
-## 3. tunnel-client 자동 설치
+`delete_path`는 source path를 allowed-root policy로 검증한 뒤 Windows Recycle Bin으로 이동합니다.
 
-`tunnel.clientDir`에 `tunnel-client.exe`가 없으면 OpenAI 공식 GitHub release의 **full client** `tunnel-client-v0.0.14-windows-amd64.zip`을 받고 `SHA256SUMS.txt`로 검증합니다. `runtime-cloudflared` artifact는 사용하지 않습니다.
+- outside-root source 거부
+- root 자체 삭제 금지
+- traversal/symlink/junction escape 거부
+- source delete 권한 또는 Recycle Bin operation 실패 시 explicit error
+- **permanent delete fallback 없음**
 
-공식 release: https://github.com/openai/tunnel-client/releases/tag/v0.0.14
+Windows CI에서 actual Recycle Bin source-removal test를 통과했습니다.
 
-## 4. UAC / 관리자 권한 정책
-
-Sprint-2에서는 별도 admin UI를 두지 않습니다. `run_command`는 현재 사용자 token으로만 실행합니다.
-
-- 자동 UAC prompt 없음
-- 자동 `RunAs` 금지
-- permission/elevation 문제는 error로 반환
-- 향후 실제 requirement가 생기면 사용자 명시 승인을 전제로 **별도 elevated helper**를 설계
-
-## 5. Delete / Windows Recycle Bin 정책
-
-`delete_path`는 먼저 대상이 allowed root 내부인지 검사한 뒤 Windows Recycle Bin API를 호출합니다.
-
-Recycle Bin은 allowed root의 하위 directory가 아닙니다. 삭제 요청은 Windows가 **현재 로그인 사용자의 보안 token**으로 해당 volume의 사용자별 Recycle Bin 영역에 이동시키는 OS operation입니다. SPARK_Transport에 Recycle Bin 전체를 browse/write할 수 있는 별도 MCP filesystem 권한을 주는 것은 아닙니다.
-
-중요한 동작 규칙:
-
-- source path가 allowed root 밖이면 요청 자체를 거부합니다.
-- 현재 사용자에게 source delete 권한이 없거나 Recycle Bin operation이 실패하면 `RECYCLE_BIN_FAILED` 계열 오류를 반환합니다.
-- 실패 시 **permanent delete로 fallback하지 않습니다.**
-- allowed root 자체 삭제 금지.
-- traversal/symlink/junction escape 대상 삭제 금지.
-- Recycle Bin에 들어간 파일은 이동되었다는 이유만으로 자동 실행되지 않습니다.
-
-즉 `delete_path`가 실패했다고 해서 파일이 영구 삭제되는 구조가 아닙니다.
-
-## 6. Command execution 주의
+## 8. Command Execution Policy
 
 예:
 
@@ -136,13 +147,62 @@ Recycle Bin은 allowed root의 하위 directory가 아닙니다. 삭제 요청�
 {"command":"cmd.exe","args":["/c","dir"],"cwd":".","timeoutMs":10000}
 ```
 
-현재 구현은 `cwd`를 allowed root 내부로 제한하지만, child process 자체의 filesystem 접근 권한까지 OS sandbox로 제한하는 것은 아닙니다. 따라서 `cmd.exe`/`powershell.exe` 등에 root 밖 absolute path를 인자로 넘길 수 있는 위험은 별도 hardening blocker로 관리합니다. `0.0.1` 승격 전에 command execution policy를 추가 검증합니다.
+0.0.1 behavior:
 
-## 7. 테스트
+- explicit executable + argv
+- `shell:false` by default
+- current-user / non-elevated
+- cwd must be inside allowed root
+- timeout
+- child process-tree cleanup
+- bounded stdout/stderr
+- exit code/signal/duration
+- automatic UAC/RunAs 없음
+
+**주의:** cwd confinement은 OS filesystem sandbox가 아닙니다. Child process는 current user 권한으로 root 밖 resource를 접근할 가능성이 있습니다. Distribution-grade command sandbox는 후속 hardening입니다.
+
+Windows timeout cleanup은 현재 verified tree termination을 사용하며, native Windows Job Object backend는 후속 hardening debt입니다.
+
+## 9. 테스트
 
 ```cmd
 npm test
 SPARK_Transport validate
 ```
 
-현재 build container automated test는 **11 PASS / 0 FAIL / 0 SKIP**입니다. Windows 실제 Recycle Bin, NTFS junction, 통합 launcher+tunnel, ChatGPT mutation/command E2E 및 command containment hardening이 완료되기 전에는 version을 `0.0.1`로 올리지 않습니다.
+GitHub Actions release-version verification:
+
+| Target | Result |
+|---|---|
+| Ubuntu / Node 24 | **PASS** |
+| Windows / Node 24 | **PASS** |
+
+Final version test run:
+
+```text
+Run ID: 34684217502
+SHA: 5014a3e816c4ee6af57dd6fe6c300199789a3f93
+```
+
+Detailed evidence: `evidence/SPRINT2_TEST_REPORT.md`.
+
+## 10. Brain Host Cost Strategy
+
+SPARK는 cost/allowance를 네 경로로 구분합니다.
+
+```text
+A. Consumer subscription Chat + connector/MCP
+B. Coding-product allowance (Work/Codex/Claude Code)
+C. Pay-as-you-go API/usage credit
+D. Local model
+```
+
+CatDesk가 제시하는 `3,000 messages/week`는 historical GPT-5.5 Chat allowance이며 current GPT-5.6 guaranteed quota로 사용하지 않습니다. Claude Pro/Max의 official remote MCP path는 future Brain Gateway 후보로 기록했지만 0.0.1에는 구현하지 않았습니다.
+
+자세한 조사: `docs/BRAIN_HOST_COMPARISON.md`.
+
+## 11. Remaining Deployment Acceptance
+
+GitHub source/automated 0.0.1 gate는 PASS입니다. 현재 사용자의 이미 실행 중인 SPARK_Transport daemon이 구버전 read-only deployment라면 GitHub 0.0.1을 pull/restart한 뒤 ChatGPT에서 mutation + `run_command` live E2E를 수행해야 합니다.
+
+이 live deployment check와 independent Architecture Peer review는 source/CI gate와 별도로 관리합니다.
