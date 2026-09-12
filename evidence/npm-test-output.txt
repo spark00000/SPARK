@@ -1,0 +1,116 @@
+
+> spark-transport@0.0.0 test
+> node --test --test-concurrency=1 tests/*.test.mjs
+
+TAP version 13
+# Subtest: daemon start/status/stop/restart lifecycle works cleanly
+ok 1 - daemon start/status/stop/restart lifecycle works cleanly
+  ---
+  duration_ms: 1730.023698
+  type: 'test'
+  ...
+# Subtest: server/discover advertises modern read-only MCP capability
+ok 2 - server/discover advertises modern read-only MCP capability
+  ---
+  duration_ms: 36.084349
+  type: 'test'
+  ...
+# Subtest: tools/list exposes only list_directory and read_file with cache metadata
+ok 3 - tools/list exposes only list_directory and read_file with cache metadata
+  ---
+  duration_ms: 8.206619
+  type: 'test'
+  ...
+# Subtest: tools/call invokes read_file and list_directory over Streamable HTTP POST
+ok 4 - tools/call invokes read_file and list_directory over Streamable HTTP POST
+  ---
+  duration_ms: 12.751038
+  type: 'test'
+  ...
+# Subtest: tool policy errors remain successful JSON-RPC tool results with isError=true
+ok 5 - tool policy errors remain successful JSON-RPC tool results with isError=true
+  ---
+  duration_ms: 11.860177
+  type: 'test'
+  ...
+# Subtest: modern header/body mismatch is rejected with -32020
+ok 6 - modern header/body mismatch is rejected with -32020
+  ---
+  duration_ms: 13.092133
+  type: 'test'
+  ...
+# Subtest: MCP endpoint rejects GET and no session header is emitted
+ok 7 - MCP endpoint rejects GET and no session header is emitted
+  ---
+  duration_ms: 13.472627
+  type: 'test'
+  ...
+# Subtest: missing modern protocol header is rejected with -32020
+ok 8 - missing modern protocol header is rejected with -32020
+  ---
+  duration_ms: 5.906038
+  type: 'test'
+  ...
+# Subtest: unknown MCP method returns HTTP 404 with JSON-RPC -32601
+ok 9 - unknown MCP method returns HTTP 404 with JSON-RPC -32601
+  ---
+  duration_ms: 14.734578
+  type: 'test'
+  ...
+# Subtest: path policy allows files inside the allowed root
+ok 10 - path policy allows files inside the allowed root
+  ---
+  duration_ms: 7.956091
+  type: 'test'
+  ...
+# Subtest: path policy rejects parent traversal
+ok 11 - path policy rejects parent traversal
+  ---
+  duration_ms: 3.95186
+  type: 'test'
+  ...
+# Subtest: path policy rejects absolute paths
+ok 12 - path policy rejects absolute paths
+  ---
+  duration_ms: 4.468468
+  type: 'test'
+  ...
+# Subtest: path policy rejects symlink escape when symlinks are available
+ok 13 - path policy rejects symlink escape when symlinks are available
+  ---
+  duration_ms: 7.549016
+  type: 'test'
+  ...
+# Subtest: read_file reads UTF-8 text and returns hash metadata
+ok 14 - read_file reads UTF-8 text and returns hash metadata
+  ---
+  duration_ms: 8.844412
+  type: 'test'
+  ...
+# Subtest: list_directory returns deterministic structured entries
+ok 15 - list_directory returns deterministic structured entries
+  ---
+  duration_ms: 10.978763
+  type: 'test'
+  ...
+# Subtest: read_file returns structured errors for missing file and wrong type
+ok 16 - read_file returns structured errors for missing file and wrong type
+  ---
+  duration_ms: 9.666384
+  type: 'test'
+  ...
+# Subtest: Sprint-1 exposes only read-only tools
+ok 17 - Sprint-1 exposes only read-only tools
+  ---
+  duration_ms: 0.204221
+  type: 'test'
+  ...
+1..17
+# tests 17
+# suites 0
+# pass 17
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 2115.515318

@@ -1,137 +1,227 @@
 # SPARK_Transport
 
-**SPARK_Transport** is the MCP transport/daemon project for local ChatGPT-to-PC MCP transport.
+SPARK_Transport는 ChatGPT가 사용자의 로컬 파일을 **표준 MCP(Model Context Protocol)** 로 읽을 수 있게 하는 로컬 MCP daemon 프로젝트입니다.
 
-Sibling projects are independent repositories:
+현재 **Sprint-1은 읽기 전용 PoC**입니다.
 
-- `SPARK_Transport` — local MCP daemon and future gateway transport
-- `ACT_Tool` — Obsidian-facing interface/plugin
-- `ACT_Theme` — ChatGPT UI/theme/usage customization through CDP
+- `read_file(path)` : 허용된 root 아래의 UTF-8 text file 읽기
+- `list_directory(path=".")` : 허용된 root 아래의 directory 목록 보기
+- 쓰기/수정/삭제/command 실행 기능은 **없습니다**.
 
-## Sprint-1
+## 1. 가장 먼저 알아둘 것
 
-Sprint-1 is intentionally read-only.
+SPARK_Transport는 PC에서 다음 주소로 실행됩니다.
 
-### MCP tools
+```text
+http://127.0.0.1:8765/mcp
+```
 
-- `read_file(path)` — reads one UTF-8 text file under the configured allowed root.
-- `list_directory(path=".")` — lists entries under the configured allowed root.
+ChatGPT는 이 localhost 주소에 직접 접속하지 않습니다. 따라서 실제 ChatGPT와 연결할 때는 OpenAI의 **Secure MCP Tunnel**을 사용합니다.
 
-No write, modify, delete, or command-execution MCP tools are exposed in Sprint-1.
+```text
+ChatGPT
+   ↓
+Secure MCP Tunnel
+   ↓
+tunnel-client
+   ↓
+SPARK_Transport (127.0.0.1:8765/mcp)
+   ↓
+사용자가 허용한 local folder
+```
 
-### Protocol
+공인 IP, router port-forwarding, inbound firewall port 개방은 필요하지 않습니다.
 
-- MCP baseline: **`2026-07-28`**.
-- Endpoint: `POST /mcp`.
-- Modern/stateless protocol only for this PoC: no `initialize`, no `Mcp-Session-Id`.
-- SPARK_Transport does **not** define custom MCP methods, headers, framing, or session semantics.
-- `/health` is a local daemon-administration endpoint outside MCP. It is not an MCP extension.
+---
 
-The official MCP TypeScript SDK v2 is the preferred production dependency because it is the stable SDK line implementing `2026-07-28`. The current execution environment could not reach the npm registry, so Sprint-1 implements the small required MCP wire subset directly from the official specification with **zero external runtime dependencies**. The external MCP contract is kept standard and is covered by protocol tests. See `refs/MCP_2026-07-28.md` and `ARCH.md`.
+# 2. 설치
 
-## Runtime
+## 2.1. 필요한 프로그램
 
-Requirement: Node.js 20+; Sprint-1 was tested with Node.js 22.16.0.
+- Git
+- Node.js 20 이상
+- Windows Command Prompt(CMD) 또는 PowerShell
 
-Set an explicit local filesystem root. Absolute paths supplied to MCP tools are rejected; tool paths are relative to this root.
+Node.js 설치 여부 확인:
+
+```cmd
+node --version
+npm --version
+```
+
+## 2.2. Repository 받기
+
+원하는 작업 폴더에서 다음을 실행합니다.
+
+```cmd
+git clone https://github.com/spark00000/SPARK_Transport.git
+cd SPARK_Transport
+```
+
+Sprint-1에는 외부 runtime package가 없으므로 별도의 `npm install`이 필요하지 않습니다.
+
+---
+
+# 3. SPARK_Transport 실행
+
+## 3.1. ChatGPT가 읽을 수 있는 folder 지정
+
+`SPARK_TRANSPORT_ROOT`는 ChatGPT에 읽기를 허용할 최상위 folder입니다.
+
+### Windows CMD
+
+```cmd
+set "SPARK_TRANSPORT_ROOT=C:\path\to\allowed-folder"
+```
+
+확인:
+
+```cmd
+echo %SPARK_TRANSPORT_ROOT%
+```
 
 ### PowerShell
 
 ```powershell
-$env:SPARK_TRANSPORT_ROOT = 'E:\SRC'
-npm run daemon:start
-npm run daemon:status
-npm run daemon:stop
+$env:SPARK_TRANSPORT_ROOT = 'C:\path\to\allowed-folder'
 ```
 
-Foreground mode:
+확인:
 
 ```powershell
-$env:SPARK_TRANSPORT_ROOT = 'E:\SRC'
-npm start
+$env:SPARK_TRANSPORT_ROOT
 ```
 
-Default local endpoint:
+**주의:** 이 folder 아래의 파일만 읽을 수 있습니다. 상위 folder로 빠져나가는 경로와 absolute path는 거부됩니다.
 
-```text
-http://127.0.0.1:8765/mcp
+## 3.2. Daemon 시작
+
+CMD와 PowerShell 모두 동일합니다.
+
+```cmd
+npm run daemon:start
 ```
 
-Health endpoint:
+상태 확인:
 
-```text
-http://127.0.0.1:8765/health
+```cmd
+npm run daemon:status
 ```
 
-The MCP daemon binds to loopback by default. ChatGPT does not connect directly to a local MCP server; the intended Sprint-1 ChatGPT deployment path is Secure MCP Tunnel. Tunnel credentials/configuration are deliberately not stored in this repository.
+정상이라면 health endpoint도 확인할 수 있습니다.
 
-## Secure MCP Tunnel setup
+### CMD
 
-ChatGPT does **not** connect directly to `127.0.0.1`. OpenAI's supported path for a private/local MCP server is **Secure MCP Tunnel**: `tunnel-client` runs on the same PC/network as SPARK_Transport, makes an outbound HTTPS connection to OpenAI, and forwards MCP requests to `http://127.0.0.1:8765/mcp`. No inbound firewall rule, public IP, port-forwarding, or public MCP URL is required.
+```cmd
+curl http://127.0.0.1:8765/health
+```
 
-Official references:
-
-- Secure MCP Tunnel guide: <https://developers.openai.com/api/docs/guides/secure-mcp-tunnels>
-- Platform tunnel settings: <https://platform.openai.com/settings/organization/tunnels>
-- Runtime API keys: <https://platform.openai.com/settings/organization/api-keys>
-- Latest `tunnel-client` release: <https://github.com/openai/tunnel-client/releases/latest>
-- ChatGPT developer-mode MCP apps: <https://help.openai.com/en/articles/12584461-developer-mode-and-mcp-apps-in-chatgpt>
-- ChatGPT app/plugin setup: <https://chatgpt.com/plugins>
-
-### 1. Prerequisites
-
-For the current ChatGPT full-MCP beta, use **ChatGPT Web** with a Business or Enterprise/Edu workspace that has Developer Mode enabled. Business Admin/Owner users can enable Developer Mode and create/test a custom MCP app. OpenAI Platform tunnel permissions and ChatGPT workspace Developer Mode are separate permissions.
-
-For the tunnel you need:
-
-- a `tunnel_id` created in Platform **Tunnels**;
-- a runtime API key used by `tunnel-client`;
-- **Tunnels Read + Use** to run/select the tunnel; creating or editing the tunnel additionally requires **Tunnels Read + Manage**;
-- the tunnel associated with the target ChatGPT workspace, otherwise it will not appear when creating the ChatGPT app.
-
-> SPARK_Transport does not use the OpenAI model/Responses API for prompts or inference. Secure MCP Tunnel nevertheless requires a Platform **runtime API key** to authenticate `tunnel-client` to the tunnel control plane. Do not commit that key to this repository.
-
-### 2. Start SPARK_Transport locally
-
-From the repository root in PowerShell:
+### PowerShell
 
 ```powershell
-$env:SPARK_TRANSPORT_ROOT = 'E:\SRC'
-npm run daemon:start
-npm run daemon:status
 Invoke-RestMethod http://127.0.0.1:8765/health
 ```
 
-The local MCP endpoint must be reachable from the same PC:
+foreground로 직접 실행하려면:
 
-```text
-http://127.0.0.1:8765/mcp
+```cmd
+npm start
 ```
 
-### 3. Create the OpenAI tunnel
+## 3.3. Daemon 중지
 
-1. Open <https://platform.openai.com/settings/organization/tunnels>.
-2. Create a tunnel and associate it with the ChatGPT workspace that will use SPARK_Transport.
-3. Copy the resulting `tunnel_id` (`tunnel_` followed by the generated identifier).
-4. Create a **runtime** API key at <https://platform.openai.com/settings/organization/api-keys> with the required tunnel permissions.
-5. Download the supported `tunnel-client` from the Platform Tunnels page or the latest public release at <https://github.com/openai/tunnel-client/releases/latest> and put the executable on `PATH`.
+```cmd
+npm run daemon:stop
+```
 
-OpenAI recommends checking the built-in quickstart before first use:
+다시 시작하려면:
 
-```powershell
+```cmd
+npm run daemon:start
+```
+
+---
+
+# 4. Secure MCP Tunnel 설정
+
+> 이 절차는 **SPARK_Transport daemon이 먼저 정상 실행된 상태**에서 진행합니다.
+
+OpenAI 공식 문서:
+
+- Secure MCP Tunnel: <https://developers.openai.com/api/docs/guides/secure-mcp-tunnels>
+- Tunnel 설정: <https://platform.openai.com/settings/organization/tunnels>
+- Runtime API key: <https://platform.openai.com/settings/organization/api-keys>
+- tunnel-client release: <https://github.com/openai/tunnel-client/releases/latest>
+- ChatGPT MCP/Developer Mode: <https://help.openai.com/en/articles/12584461>
+
+## 4.1. OpenAI Platform에서 Tunnel 생성
+
+1. 다음 페이지를 엽니다.
+   - <https://platform.openai.com/settings/organization/tunnels>
+2. 새 Tunnel을 생성합니다.
+3. 사용할 ChatGPT workspace와 연결합니다.
+4. 생성된 `tunnel_id`를 기록합니다.
+
+예:
+
+```text
+tunnel_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+```
+
+## 4.2. Tunnel용 Runtime API key 생성
+
+다음 페이지에서 runtime API key를 만듭니다.
+
+<https://platform.openai.com/settings/organization/api-keys>
+
+Tunnel 실행에는 적절한 Tunnel 권한이 필요합니다.
+
+- 사용: `Tunnels Read + Use`
+- Tunnel 생성/수정: 필요 시 `Tunnels Read + Manage`
+
+**중요:** 이 key는 OpenAI model/Responses API로 prompt를 보내기 위한 key가 아닙니다. SPARK_Transport는 OpenAI model API를 호출하지 않습니다. 이 key는 `tunnel-client`가 OpenAI의 tunnel control plane에 인증할 때 사용됩니다.
+
+## 4.3. tunnel-client 설치
+
+최신 release를 받습니다.
+
+<https://github.com/openai/tunnel-client/releases/latest>
+
+`tunnel-client` 실행 파일을 PATH가 잡힌 위치에 두거나 현재 shell에서 실행 가능한 위치에 둡니다.
+
+확인:
+
+```cmd
 tunnel-client help quickstart
 ```
 
-### 4. Configure the tunnel-client profile
+## 4.4. Runtime key와 tunnel ID 설정
 
-Use a shell-only environment variable for the runtime key:
+### Windows CMD
+
+```cmd
+set "CONTROL_PLANE_API_KEY=sk-..."
+set "TUNNEL_ID=tunnel_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+```
+
+### PowerShell
 
 ```powershell
 $env:CONTROL_PLANE_API_KEY = 'sk-...'
-$tunnelId = 'tunnel_0123456789abcdef0123456789abcdef'
+$tunnelId = 'tunnel_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'
 ```
 
-SPARK_Transport is a local HTTP MCP server, so initialize the standard no-auth HTTP sample and point it at the loopback MCP endpoint:
+key를 source code, README, Git repository에 저장하지 마십시오.
+
+## 4.5. Tunnel profile 생성
+
+### Windows CMD
+
+```cmd
+tunnel-client init --sample sample_mcp_remote_no_auth --profile spark-transport --tunnel-id %TUNNEL_ID% --mcp-server-url http://127.0.0.1:8765/mcp
+```
+
+### PowerShell
 
 ```powershell
 tunnel-client init `
@@ -141,140 +231,146 @@ tunnel-client init `
   --mcp-server-url http://127.0.0.1:8765/mcp
 ```
 
-Validate the profile before running it:
+설정 검사:
 
-```powershell
+```cmd
 tunnel-client doctor --profile spark-transport --explain
 ```
 
-Then start the tunnel in the foreground:
+## 4.6. Tunnel 실행
 
-```powershell
+```cmd
 tunnel-client run --profile spark-transport
 ```
 
-Keep **both** SPARK_Transport and `tunnel-client run` running while ChatGPT scans or calls tools. OpenAI documents that connector discovery and MCP calls depend on a healthy running `tunnel-client`.
+이 창은 닫지 마십시오. ChatGPT가 tool을 호출하는 동안 `SPARK_Transport daemon`과 `tunnel-client`가 둘 다 실행 중이어야 합니다.
 
-By default, `tunnel-client` exposes a loopback-only operator surface on port `8080`. From another PowerShell window:
+Tunnel 상태 확인:
 
-```powershell
-Invoke-RestMethod http://127.0.0.1:8080/healthz
-Invoke-RestMethod http://127.0.0.1:8080/readyz
+```cmd
+curl http://127.0.0.1:8080/healthz
+curl http://127.0.0.1:8080/readyz
 ```
 
-The local tunnel admin UI is normally:
+브라우저에서 다음 local 관리 화면도 확인할 수 있습니다.
 
 ```text
 http://127.0.0.1:8080/ui
 ```
 
-### 5. Attach the tunnel to ChatGPT
+---
 
-On **ChatGPT Web**:
+# 5. ChatGPT에 연결
 
-1. Ensure Developer Mode is enabled for the account/workspace.
-2. Open <https://chatgpt.com/plugins> or use the current **Settings/Workspace Settings → Apps → Create** flow.
-3. Create a developer-mode custom app.
-4. Under **Connection**, choose **Tunnel**.
-5. Select the tunnel from the list, or paste the `tunnel_id`.
-6. Choose **Scan tools** and wait for discovery to finish.
-7. Sprint-1 must expose exactly these application tools:
-   - `read_file`
-   - `list_directory`
-8. Create/save the draft app and enable it in a new chat.
+ChatGPT Web에서 진행합니다.
 
-A minimal verification prompt is:
+1. 사용하는 workspace에서 Developer Mode를 활성화합니다.
+2. Custom MCP app을 생성합니다.
+3. Connection 방식에서 **Tunnel**을 선택합니다.
+4. 앞에서 만든 tunnel을 선택하거나 `tunnel_id`를 입력합니다.
+5. **Scan tools**를 실행합니다.
+6. 다음 두 tool만 나타나는지 확인합니다.
 
 ```text
-Use SPARK_Transport to list the configured root directory ".". Do not modify anything.
+read_file
+list_directory
 ```
 
-If `SPARK_TRANSPORT_ROOT` points at this repository, a second check is:
+Sprint-1에서는 write/delete/exec tool이 나타나면 안 됩니다.
+
+---
+
+# 6. 실제 동작 확인
+
+예를 들어 ChatGPT에서 다음과 같이 요청합니다.
 
 ```text
-Use SPARK_Transport to read README.md. Do not use any write or command-execution tool.
+SPARK_Transport를 사용해서 허용된 root의 "." directory 목록을 보여줘.
 ```
 
-### 6. Stop / restart behavior
+파일 읽기 테스트:
 
-The tunnel and MCP daemon do not have to run permanently, but they **must be running when ChatGPT discovers or calls the MCP tools**.
+```text
+SPARK_Transport를 사용해서 허용된 root 안의 README.md를 읽어줘.
+```
 
-```powershell
+실제 파일명은 `SPARK_TRANSPORT_ROOT` 아래에 존재하는 파일을 사용하십시오.
+
+---
+
+# 7. 프로그램 종료
+
+SPARK_Transport daemon:
+
+```cmd
 npm run daemon:stop
 ```
 
-If SPARK_Transport or `tunnel-client` is stopped, ChatGPT tool calls through that tunnel fail until the process is restarted/reconnected. The OpenAI tunnel registration itself is not the local daemon process.
+`tunnel-client`는 실행 중인 terminal에서 `Ctrl+C`로 종료합니다.
 
-### 7. Troubleshooting
+다시 사용할 때는 다음 두 개를 다시 실행합니다.
 
-| Symptom | Check |
+```cmd
+npm run daemon:start
+tunnel-client run --profile spark-transport
+```
+
+---
+
+# 8. 문제 해결
+
+| 증상 | 확인 방법 |
 |---|---|
-| `SPARK_Transport` unavailable locally | `npm run daemon:status` and `Invoke-RestMethod http://127.0.0.1:8765/health` |
-| `tunnel-client` not ready | `tunnel-client doctor --profile spark-transport --explain`; then check `/readyz` and `/ui` |
-| Tunnel not visible in ChatGPT | Associate the tunnel with the target ChatGPT workspace and verify **Tunnels Read + Use** |
-| Tool scan/calls fail | Keep `tunnel-client run --profile spark-transport` running and confirm the local `/mcp` endpoint is reachable |
-| Tool list contains write/delete/exec | Wrong server/build/profile; Sprint-1 must expose only `read_file` and `list_directory` |
-| `OUTSIDE_ALLOWED_ROOT` / path error | Check `SPARK_TRANSPORT_ROOT`; tool paths are relative and may not escape the configured root |
-| ChatGPT UI labels differ | MCP/full-app support is beta; follow the current Developer Mode/App creation flow, keeping **Connection = Tunnel** |
+| `SPARK_TRANSPORT_ROOT is required` | CMD에서는 `set "SPARK_TRANSPORT_ROOT=..."`, PowerShell에서는 `$env:SPARK_TRANSPORT_ROOT = '...'` 실행 |
+| daemon이 시작되지 않음 | `npm run daemon:status` 확인 |
+| local server 확인 | `curl http://127.0.0.1:8765/health` |
+| tunnel이 연결되지 않음 | `tunnel-client doctor --profile spark-transport --explain` |
+| tunnel 상태 확인 | `curl http://127.0.0.1:8080/readyz` |
+| ChatGPT에서 tunnel이 안 보임 | tunnel과 ChatGPT workspace 연결 및 Tunnel 권한 확인 |
+| `OUTSIDE_ALLOWED_ROOT` | 요청한 파일이 `SPARK_TRANSPORT_ROOT` 밖에 있거나 absolute path 사용 여부 확인 |
+| write/delete/exec tool이 보임 | Sprint-1이 아닌 잘못된 server/profile 연결 여부 확인 |
 
-### 8. Security boundary
+---
 
-- No inbound firewall port or public MCP listener is required.
-- Keep `SPARK_TRANSPORT_HOST=127.0.0.1` for Sprint-1.
-- Never commit `CONTROL_PLANE_API_KEY` or tunnel credentials.
-- The allowed root is the filesystem security boundary exposed by Sprint-1.
-- Sprint-1 intentionally has **no** write, modify, delete, or command-execution MCP tool.
+# 9. 설정값
 
-## Configuration
-
-| Variable | Required | Default | Purpose |
+| 환경 변수 | 필수 | 기본값 | 설명 |
 |---|---:|---|---|
-| `SPARK_TRANSPORT_ROOT` | Yes | — | Allowed filesystem root |
-| `SPARK_TRANSPORT_HOST` | No | `127.0.0.1` | Sprint-1 requires loopback |
-| `SPARK_TRANSPORT_PORT` | No | `8765` | Local MCP port |
-| `SPARK_TRANSPORT_MCP_PATH` | No | `/mcp` | MCP endpoint |
-| `SPARK_TRANSPORT_HEALTH_PATH` | No | `/health` | Local daemon health endpoint |
-| `SPARK_TRANSPORT_MAX_READ_BYTES` | No | `1048576` | Maximum UTF-8 file size |
-| `SPARK_TRANSPORT_STATE_DIR` | No | `.runtime` | PID/log state |
+| `SPARK_TRANSPORT_ROOT` | 예 | 없음 | 읽기를 허용할 최상위 folder |
+| `SPARK_TRANSPORT_HOST` | 아니오 | `127.0.0.1` | Sprint-1 local bind |
+| `SPARK_TRANSPORT_PORT` | 아니오 | `8765` | MCP server port |
+| `SPARK_TRANSPORT_MCP_PATH` | 아니오 | `/mcp` | MCP endpoint |
+| `SPARK_TRANSPORT_HEALTH_PATH` | 아니오 | `/health` | daemon health endpoint |
+| `SPARK_TRANSPORT_MAX_READ_BYTES` | 아니오 | `1048576` | 한 파일의 최대 읽기 크기 |
+| `SPARK_TRANSPORT_STATE_DIR` | 아니오 | `.runtime` | PID/log 저장 위치 |
 
-## Safety boundary
+---
 
-Sprint-1 rejects:
+# 10. 테스트
 
-- parent traversal (`..`),
-- absolute/drive-qualified paths,
-- paths resolving outside the allowed root,
-- symlink/junction escapes,
-- non-file reads and non-directory listings,
-- non-UTF-8 content for `read_file`,
-- files over the configured size limit.
-
-The server does not elevate privileges and exposes no state-changing MCP tool.
-
-## Tests
-
-```bash
+```cmd
 npm test
 ```
 
-Sprint-1 test coverage includes filesystem containment, traversal rejection, absolute-path rejection, symlink escape rejection, structured tool errors, MCP discovery, tool listing/calling, modern header validation, absence of session headers, and daemon start/status/stop/restart.
+Sprint-1 baseline에서는 다음을 검증합니다.
 
-See `evidence/SPRINT1_TEST_REPORT.md` for the tested baseline.
+- root 내부 file read
+- directory list
+- `..` traversal 차단
+- absolute path 차단
+- symlink escape 차단
+- structured error
+- MCP discovery/list/call
+- write/delete/exec tool 미노출
+- daemon start/status/stop/restart
 
-## Development artifacts
+상세 결과는 `evidence/SPRINT1_TEST_REPORT.md`를 참조하십시오.
 
-- `AGENTS.md` — reusable pArc/PIM3 engineering charter supplied by the project
-- `SWE1.md` — SPARK_Transport requirements/constraints
-- `SWE2.md` — architecture/process ledger
-- `ARCH.md` — stable Architecture Contract
-- `ARCH_QGate.md` — architecture review worksheet/result
-- `SWE3.md` — implementation backlog and unresolved work
-- `MIGRATION_REPORT.md` — what was reused from the prior mcpwriter snapshot
+---
 
-## Sprint roadmap
+# 11. 프로토콜 기준
 
-- **Sprint-1:** read-only local MCP daemon (`read_file`, `list_directory`) + tunnel PoC.
-- **Sprint-2:** file create/update/delete and command execution with authorization, confirmation, backup/recovery, and audit controls.
-- **Sprint-3:** stable producer/transport contract for sibling `ACT_Tool`; ACT_Tool owns Obsidian UI/plugin behavior.
-- **Sprint-4:** public SPARK gateway, OAuth, user/device routing, outbound local-agent channel.
-- **Sprint-5:** packaging/distribution/operations for SPARK_Transport.
+- MCP baseline: `2026-07-28`
+- SPARK_Transport 전용 MCP method/header/session/framing을 추가하지 않습니다.
+- `/health`는 local daemon 관리 endpoint이며 MCP protocol extension이 아닙니다.
+- 상세 protocol reference는 `refs/MCP_2026-07-28.md`에 정리되어 있습니다.

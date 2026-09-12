@@ -1,0 +1,18 @@
+{
+  "name": "spark-transport",
+  "version": "0.0.0",
+  "private": true,
+  "description": "SPARK_Transport Sprint-1: read-only local MCP 2026-07-28 daemon",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "start": "node src/cli.mjs serve",
+    "daemon:start": "node src/cli.mjs start",
+    "daemon:status": "node src/cli.mjs status",
+    "daemon:stop": "node src/cli.mjs stop",
+    "test": "node --test --test-concurrency=1 tests/*.test.mjs",
+    "test:protocol": "node --test --test-concurrency=1 tests/mcp-http.test.mjs"
+  }
+}
