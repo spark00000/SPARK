@@ -20,7 +20,14 @@ if(-not (Test-Path $ConfigPath)){
 }
 $ConfigPath=(Resolve-Path $ConfigPath).Path
 $env:SPARK_TRANSPORT_CONFIG=$ConfigPath
-$config=Get-Content -Raw $ConfigPath | ConvertFrom-Json
+try{
+  $config=Get-Content -Raw $ConfigPath | ConvertFrom-Json
+}catch{
+  Write-Host '[S2-01] FAIL - invalid JSON in local config.' -ForegroundColor Red
+  Write-Host "[S2-01] File: $ConfigPath"
+  Write-Host "[S2-01] Detail: $($_.Exception.Message)"
+  exit 2
+}
 Write-Host "[S2-01] PASS - Config loaded: $ConfigPath"
 
 Write-Host '[S2-02] Checking Node.js...'
@@ -28,7 +35,6 @@ Write-Host '[S2-02] Checking Node.js...'
 if($LASTEXITCODE -ne 0){Fail-Step 'S2-02' 'Node.js 20+ is required'}
 Write-Host '[S2-02] PASS - Node.js available'
 
-# Resolve the daemon log exactly as the Node config does for the normal Windows PoC paths.
 if($config.daemon.stateDir){
   $daemonStateDir=Resolve-RepoRelative ([string]$config.daemon.stateDir)
 }else{
@@ -67,37 +73,15 @@ Write-Host "[S2-04] PASS - daemon healthy, version=$($r.version)"
 if($config.tunnel.enabled -eq $false){Write-Host '[S2-05] PASS - Tunnel disabled by config. Startup complete.';exit 0}
 if(-not $config.tunnel.id -or $config.tunnel.id -like 'tunnel_x*'){Fail-Step 'S2-05' 'Set tunnel.id in local config'}
 
-$keyRef=$config.tunnel.controlPlaneApiKeyRef
-$defaultSecretFile=Join-Path $root '.runtime\secrets\control-plane-api-key.txt'
-if(-not $keyRef){
-  if(Test-Path $defaultSecretFile){$keyRef='file:.runtime/secrets/control-plane-api-key.txt'}else{$keyRef='env:CONTROL_PLANE_API_KEY'}
-}
-if($keyRef -like 'env:*'){
-  $envName=$keyRef.Substring(4)
-  if(-not $envName){Fail-Step 'S2-05' 'Invalid env: secret reference'}
-  $envValue=[Environment]::GetEnvironmentVariable($envName)
-  if(-not $envValue){
-    if(Test-Path $defaultSecretFile){
-      $keyRef="file:$((Resolve-Path $defaultSecretFile).Path)"
-      Write-Host '[S2-05] PASS - Environment key not set; using repo-local gitignored secret file.'
-    }else{
-      Fail-Step 'S2-05' "Secret environment variable '$envName' is not set and default secret file was not found: $defaultSecretFile"
-    }
-  }else{
-    Write-Host "[S2-05] PASS - Tunnel key source: env:$envName (value hidden)"
-  }
-}elseif($keyRef -like 'file:*'){
-  $secretPath=$keyRef.Substring(5)
-  if(-not [System.IO.Path]::IsPathRooted($secretPath)){$secretPath=Join-Path $root $secretPath}
-  if(-not (Test-Path $secretPath)){Fail-Step 'S2-05' "Secret file not found: $secretPath"}
-  $secretPath=(Resolve-Path $secretPath).Path
-  $secretValue=(Get-Content -Raw $secretPath).Trim()
-  if(-not $secretValue){Fail-Step 'S2-05' "Secret file is empty: $secretPath"}
-  $keyRef="file:$secretPath"
-  Write-Host "[S2-05] PASS - Tunnel key source: file:$secretPath (value hidden)"
-}else{
-  Fail-Step 'S2-05' 'controlPlaneApiKeyRef must use env:VARNAME or file:path'
-}
+$keyFile=[string]$config.tunnel.controlPlaneApiKeyFile
+if(-not $keyFile){$keyFile='.runtime/secrets/control-plane-api-key.txt'}
+$keyFile=Resolve-RepoRelative $keyFile
+if(-not (Test-Path $keyFile)){Fail-Step 'S2-05' "Tunnel key file not found: $keyFile"}
+$keyFile=(Resolve-Path $keyFile).Path
+$keyValue=(Get-Content -Raw $keyFile).Trim()
+if(-not $keyValue){Fail-Step 'S2-05' "Tunnel key file is empty: $keyFile"}
+$keyRef="file:$keyFile"
+Write-Host "[S2-05] PASS - Tunnel key file: $keyFile (value hidden)"
 
 $clientDir=$config.tunnel.clientDir
 if(-not [System.IO.Path]::IsPathRooted($clientDir)){$clientDir=Join-Path $root $clientDir}
