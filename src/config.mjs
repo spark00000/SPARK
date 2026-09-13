@@ -40,6 +40,24 @@ function defaultPrivateStateDir() {
   return path.join(base, 'SPARK_Transport');
 }
 
+function normalizeAllowedRoots(value) {
+  const raw = Array.isArray(value) ? value : [value];
+  if (raw.length === 0) throw new Error('daemon.allowedRoot must contain at least one path');
+  const roots = raw.map((entry, index) => {
+    if (typeof entry !== 'string' || entry.trim() === '') {
+      throw new Error(`daemon.allowedRoot[${index}] must be a non-empty string path`);
+    }
+    return path.resolve(entry);
+  });
+  const seen = new Set();
+  for (const root of roots) {
+    const key = process.platform === 'win32' ? root.toLowerCase() : root;
+    if (seen.has(key)) throw new Error(`daemon.allowedRoot contains a duplicate path: ${root}`);
+    seen.add(key);
+  }
+  return roots;
+}
+
 export function loadConfig(overrides = {}) {
   const env = process.env;
   const configPath = path.resolve(overrides.configPath ?? env.SPARK_TRANSPORT_CONFIG ?? path.join(PROJECT_ROOT, 'config', 'spark-transport.local.json'));
@@ -47,12 +65,16 @@ export function loadConfig(overrides = {}) {
   const daemon = file.daemon ?? {};
   const tunnel = file.tunnel ?? {};
 
-  const root = overrides.root ?? env.SPARK_TRANSPORT_ROOT ?? daemon.allowedRoot;
-  if (!root) throw new Error('allowed root is required: set daemon.allowedRoot in config or SPARK_TRANSPORT_ROOT');
+  const configuredRoots = overrides.root ?? env.SPARK_TRANSPORT_ROOT ?? daemon.allowedRoot;
+  if (!configuredRoots || (Array.isArray(configuredRoots) && configuredRoots.length === 0)) {
+    throw new Error('allowed root is required: set daemon.allowedRoot in config or SPARK_TRANSPORT_ROOT');
+  }
+  const roots = normalizeAllowedRoots(configuredRoots);
 
   return {
     configPath,
-    root: path.resolve(root),
+    root: roots[0],
+    roots,
     host: overrides.host ?? env.SPARK_TRANSPORT_HOST ?? daemon.host ?? DEFAULT_HOST,
     port: positiveInteger(overrides.port ?? env.SPARK_TRANSPORT_PORT ?? daemon.port, DEFAULT_PORT, 'port'),
     mcpPath: overrides.mcpPath ?? env.SPARK_TRANSPORT_MCP_PATH ?? daemon.mcpPath ?? DEFAULT_MCP_PATH,

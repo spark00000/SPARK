@@ -1,6 +1,9 @@
 {
   "daemon": {
-    "allowedRoot": "C:/path/to/allowed-folder",
+    "allowedRoot": [
+      "E:/test",
+      "C:/test"
+    ],
     "host": "127.0.0.1",
     "port": 8765,
     "mcpPath": "/mcp",
