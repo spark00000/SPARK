@@ -153,7 +153,7 @@ export async function createPathPolicy(rootOrRoots) {
     }
     if (!isInside(context.rootReal, real)) throw new PolicyError('SYMLINK_ESCAPE', 'resolved path escapes the selected allowed root');
     if (lst.isSymbolicLink()) throw new PolicyError('SYMLINK_MUTATION_NOT_ALLOWED', 'mutating symbolic links/junctions is not allowed');
-    return { absolutePath: context.lexical, displayPath: displayPath(context.rootReal, context.lexical, context.absoluteInput), stat: lst };
+    return { absolutePath: context.lexical, displayPath: displayPath(context.rootReal, real, context.absoluteInput), stat: lst };
   }
 
   async function resolveCwd(input = '.') { return resolveExisting(input, 'directory'); }
