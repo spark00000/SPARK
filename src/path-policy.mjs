@@ -40,10 +40,10 @@ function displayPath(rootReal, target, absoluteInput) {
   return relative.split(path.sep).join('/');
 }
 
-function chooseRootForAbsolute(rootReals, candidate) {
-  const matches = rootReals.filter((root) => isInside(root, candidate));
+function chooseRootForAbsolute(rootContexts, candidate) {
+  const matches = rootContexts.filter(({ rootAbs, rootReal }) => isInside(rootAbs, candidate) || isInside(rootReal, candidate));
   if (matches.length === 0) throw new PolicyError('OUTSIDE_ALLOWED_ROOT', 'absolute path is outside configured allowed roots');
-  return matches.sort((a, b) => b.length - a.length)[0];
+  return matches.sort((a, b) => Math.max(b.rootAbs.length, b.rootReal.length) - Math.max(a.rootAbs.length, a.rootReal.length))[0];
 }
 
 async function realpathParentInside(rootReal, lexical) {
@@ -69,7 +69,7 @@ export async function createPathPolicy(rootOrRoots) {
   const configured = Array.isArray(rootOrRoots) ? rootOrRoots : [rootOrRoots];
   if (configured.length === 0) throw new PolicyError('ROOT_NOT_FOUND', 'at least one configured allowed root is required');
 
-  const rootReals = [];
+  const rootContexts = [];
   const seen = new Set();
   for (const configuredRoot of configured) {
     const rootAbs = path.resolve(configuredRoot);
@@ -81,21 +81,22 @@ export async function createPathPolicy(rootOrRoots) {
     const key = normalizeCase(rootReal);
     if (seen.has(key)) throw new PolicyError('DUPLICATE_ROOT', `configured allowed root is duplicated: ${rootAbs}`);
     seen.add(key);
-    rootReals.push(rootReal);
+    rootContexts.push({ rootAbs, rootReal });
   }
+  const rootReals = rootContexts.map(({ rootReal }) => rootReal);
 
   function lexicalPath(input = '.') {
-    const allowAbsolute = rootReals.length > 1;
+    const allowAbsolute = rootContexts.length > 1;
     rejectUnsafeSyntax(input, { allowAbsolute });
     const absoluteInput = isAbsoluteInput(input);
     if (absoluteInput) {
       const lexical = path.resolve(input);
-      const rootReal = chooseRootForAbsolute(rootReals, lexical);
-      return { lexical, rootReal, absoluteInput };
+      const context = chooseRootForAbsolute(rootContexts, lexical);
+      return { lexical, rootReal: context.rootReal, absoluteInput };
     }
 
     const relative = input === '' ? '.' : input;
-    const rootReal = rootReals[0];
+    const rootReal = rootContexts[0].rootReal;
     const lexical = path.resolve(rootReal, relative);
     if (!isInside(rootReal, lexical)) throw new PolicyError('OUTSIDE_ALLOWED_ROOT', 'path is outside the primary allowed root');
     return { lexical, rootReal, absoluteInput: false };
