@@ -2,60 +2,36 @@
 
 > **Agent quick start:** 이 README의 `Installation` 절을 위에서 아래로 그대로 실행하면 새 Windows PC에서 SPARK 0.0.0 private-use baseline을 설치하고 ChatGPT custom MCP app까지 등록할 수 있습니다.
 
-SPARK는 **Symbiotic Personal AI Robotic Keeper**의 약자이며, AI Brain과 사용자의 local/physical capability 사이를 연결하는 provider-neutral Agent Core입니다. 현재 0.0.0 private-use baseline은 ChatGPT + Secure MCP Tunnel을 Brain path로 사용하고, Windows local filesystem CRUD와 simple command execution을 표준 MCP로 제공합니다.
+SPARK는 **Symbiotic Personal AI Robotic Keeper**의 약자입니다. 현재 0.0.0은 ChatGPT를 OpenAI Secure MCP Tunnel로 Windows PC의 SPARK Transport에 연결하여 local filesystem CRUD와 simple command execution을 표준 MCP로 제공합니다. ChatGPT Windows app에는 CDP 기반 ChatGPT UI theme runtime이 함께 포함됩니다.
 
-현재 baseline은 **version 0.0.0 — Private Usage Baseline**입니다. 다음 0.0.1부터 multi-user usage와 deployment hardening을 진행합니다.
+현재 release는 **version 0.0.0 — Private Usage Baseline**입니다.
 
 ## 1. Architecture
 
-```text
-AI Brain Host
-  -> Brain Gateway
-  -> SPARK Agent Core + Human UX Plane
-  -> Body Port
-  -> Physical / Execution Adapter
-```
-
-현재:
+현재 동작 경로는 다음과 같습니다.
 
 ```text
 ChatGPT Web/App
   -> OpenAI Secure MCP Tunnel
   -> MCP 2026-07-28
-  -> SPARK Agent Core
+  -> SPARK Transport
   -> Windows Filesystem / Process / Recycle Bin
 ```
 
-Future extension points에는 Claude/other Brain Host, custom SPARK UI, Computer Use, Drone/Robot/Sensor/Actuator Body adapters가 포함됩니다. Claude와 GUI/robot integration은 0.0.0에 구현하지 않았습니다.
-
-Repository는 기능별 sub-project를 `modules/` 아래에 둡니다.
+ChatGPT Windows app UI는 별도의 local module이 담당합니다.
 
 ```text
 SPARK/
 ├─ modules/
-│  ├─ transport/
-│  │  ├─ config/   # Transport config template / optional local override
-│  │  ├─ src/
-│  │  ├─ test/
-│  │  ├─ scripts/  # Transport-only bootstrap/validation
-│  │  └─ tools/
-│  ├─ chatgpt-ui/  # ChatGPT Windows UI integration (theme/CDP and future UI controls)
-│  └─ oui/         # future Obsidian UI / clipboard integration
-├─ .runtime/       # local-only config / secrets / runtime state
-├─ docs/           # architecture / quality gate
-├─ scripts/        # SPARK-wide lifecycle orchestration
-├─ _pArc/          # local-only process artifacts
-└─ SPARK.cmd       # one-click entry point
+│  ├─ transport/     # MCP, policy, filesystem/process execution, tunnel support
+│  └─ chatgpt-ui/    # ChatGPT Windows UI theme/CDP integration
+├─ .runtime/         # local-only config, secret, PID, profile, ledger/recovery
+├─ docs/             # architecture / quality gate
+├─ scripts/          # start-all / status-all / stop-all
+└─ SPARK.cmd
 ```
 
-새 기능은 독립 lifecycle/config/test 경계가 있으면 `modules/<name>/` sub-project로 추가합니다. Root는 전체 SPARK orchestration과 공통 산출물만 유지합니다. 따라서 root `scripts/`에는 `start-all/status-all/stop-all` 같은 공통 orchestration만 두고, tunnel bootstrap·Transport validation처럼 특정 module 전용 script는 `modules/transport/scripts/`가 소유합니다.
-
-자세한 구조:
-
-- `docs/ARCH.md`
-- `docs/ARCH_QGate.md`
-
-프로젝트 process 문서 `SWE1.md`, `SWE2.md`, `SWE3.md`, `PIM3.md`는 local-only `_pArc/`에 유지하며 GitHub에는 올리지 않습니다.
+자세한 내부 구조는 `docs/ARCH.md`와 `docs/ARCH_QGate.md`에 있습니다.
 
 ## 2. 0.0.0 Tools
 
@@ -99,7 +75,7 @@ error?
 
 ## 4. Installation
 
-이 절은 **새 Windows PC / clean clone에서 agent가 위에서 아래로 그대로 수행하는 기준 절차**입니다. 중간 단계를 추측해서 생략하지 않습니다.
+이 절은 **새 Windows PC에서 SPARK 0.0.0을 처음 설치하는 순서**입니다. 위에서 아래로 그대로 진행합니다.
 
 ### Step 0 — Prerequisite
 
@@ -108,13 +84,27 @@ error?
 - Windows 11
 - Git
 - Node.js 20 이상 (`Node 24` CI 검증)
-- ChatGPT Business / Enterprise / Edu에서 custom MCP app을 만들 수 있는 관리자/소유자 또는 허용된 사용자
-- OpenAI Secure MCP Tunnel ID
-- Tunnel Runtime API key (`Tunnels Read + Use` 권한)
+- ChatGPT Business / Enterprise / Edu에서 custom MCP app을 만들 수 있는 권한
+- OpenAI Platform에서 Secure MCP Tunnel을 만들거나 사용할 수 있는 권한
 
-Tunnel ID는 OpenAI Platform의 Tunnels 관리 화면에서 확인하거나 생성합니다. Runtime API key는 Platform Runtime API keys에서 **Restricted + Tunnels Read + Use**로 발급합니다. 새 tunnel을 방금 만든 경우 OpenAI tunnel-client 문서 기준으로 active/ready까지 약 25–30초가 걸릴 수 있습니다. 기존 tunnel을 재사용하는 경우 이 생성 대기 시간은 해당하지 않습니다.
+### Step 1 — OpenAI Secure MCP Tunnel 준비
 
-### Step 1 — Clone 및 version 확인
+SPARK를 clone하기 전에 Tunnel ID와 Runtime API key를 먼저 준비합니다.
+
+1. OpenAI Platform의 Tunnels 관리 화면을 엽니다.
+   - https://platform.openai.com/settings/organization/tunnels
+2. 새 tunnel을 만들거나 기존 tunnel을 선택하고 **tunnel ID**를 기록합니다.
+   - 형식: `tunnel_...`
+   - ChatGPT에서 사용할 workspace에 tunnel access가 있어야 합니다.
+3. Runtime API keys 화면을 엽니다.
+   - https://platform.openai.com/settings/organization/api-keys
+4. Runtime key를 **Restricted**로 만들고 **Tunnels Read + Use** 권한을 부여합니다.
+   - 장시간 실행되는 SPARK runtime에는 Admin key를 사용하지 않습니다.
+5. 새 tunnel을 방금 생성했다면 약 **25–30초** 뒤 active/ready 상태를 확인합니다.
+
+SPARK는 이후 `SPARK.cmd start`에서 필요한 `tunnel-client.exe` 다운로드, SHA-256 검증, profile 생성, `doctor`, `run`을 자동으로 수행합니다. 사용자가 tunnel-client profile을 수동으로 만들 필요는 없습니다.
+
+### Step 2 — SPARK clone 및 version 확인
 
 ```cmd
 git clone https://github.com/spark00000/SPARK.git
@@ -124,9 +114,9 @@ npm --version
 node -p "require('./package.json').version"
 ```
 
-마지막 출력은 private-use baseline에서 `0.0.0`이어야 합니다.
+마지막 출력은 `0.0.0`이어야 합니다.
 
-### Step 2 — Private config 생성
+### Step 3 — Private config 생성
 
 ```cmd
 mkdir .runtime\config 2>NUL
@@ -136,24 +126,15 @@ notepad .runtime\config\spark.local.json
 
 최소 수정 항목:
 
-- `transport.allowedRoot`: SPARK가 접근할 실제 local root
-- `tunnel.id`: 자신의 Secure MCP Tunnel ID
-- `tunnel.controlPlaneApiKeyFile`: 기본값 `.runtime/secrets/control-plane-api-key.txt` 유지 권장
+- `transport.allowedRoot`: SPARK가 접근할 local root
+- `tunnel.id`: Step 1에서 준비한 tunnel ID
+- `tunnel.controlPlaneApiKeyFile`: 기본값 `.runtime/secrets/control-plane-api-key.txt` 사용 권장
 - `chatgptUi.enabled`: ChatGPT UI/CDP 통합 사용 여부
 - `chatgptUi.theme`: 기본 `dark-red`
 
-개인 설정 파일과 `.runtime/`은 Git에 올리지 않습니다.
+Windows JSON path는 `C:/SPARK/...`처럼 `/` 표기를 권장합니다.
 
-Config 선택 순서:
-
-1. 명시적인 `-ConfigPath`
-2. 실제 파일이 존재하는 `SPARK_CONFIG`
-3. `modules/transport/config/spark.local.json`
-4. `.runtime/config/spark.local.json`
-
-Windows JSON path는 `C:/SPARK/...`처럼 `/` 사용을 권장합니다.
-
-Root 권한:
+Root별 권한 예:
 
 ```json
 "allowedRoot": [
@@ -166,23 +147,28 @@ Root 권한:
 - `W`: create/write/modify/copy destination/move/delete
 - `X`: `run_command` cwd
 
-### Step 3 — Runtime key 저장
+Private config 선택 순서:
+
+1. 명시적인 `-ConfigPath`
+2. 실제 파일이 존재하는 `SPARK_CONFIG`
+3. `modules/transport/config/spark.local.json`
+4. `.runtime/config/spark.local.json`
+
+### Step 4 — Runtime API key 저장
 
 ```cmd
 mkdir .runtime\secrets 2>NUL
 notepad .runtime\secrets\control-plane-api-key.txt
 ```
 
-파일에는 **Runtime API key 한 줄만** 저장합니다. Admin key를 long-running Transport runtime key로 사용하지 않습니다.
+파일에는 Step 1에서 만든 **Runtime API key 한 줄만** 저장합니다. `.runtime/`은 Git에 포함되지 않습니다.
 
-### Step 4 — SPARK 시작
+### Step 5 — SPARK 시작
 
 ```cmd
 SPARK.cmd start
 SPARK.cmd status
 ```
-
-`SPARK.cmd start`는 필요한 `tunnel-client.exe`가 없으면 OpenAI 공식 release를 내려받고 SHA-256 checksum을 검증한 뒤 설치합니다.
 
 정상 상태:
 
@@ -193,9 +179,9 @@ ChatGPT            : running
 ChatGPT UI         : active
 ```
 
-Tunnel이 새로 생성된 직후라면 OpenAI 문서의 25–30초 activation window를 고려하고 다시 `SPARK.cmd status`로 확인합니다.
+Tunnel이 ready가 아니면 먼저 `SPARK.cmd status`와 `.runtime/tunnel-doctor.log`를 확인합니다. 새 tunnel은 생성 직후 약 25–30초의 activation 시간이 필요할 수 있습니다.
 
-### Step 5 — Local validation
+### Step 6 — Local validation
 
 ```cmd
 npm test
@@ -203,21 +189,36 @@ npm run chatgpt-ui:validate
 SPARK.cmd validate
 ```
 
-모든 명령이 PASS해야 다음 단계로 진행합니다.
+모든 명령이 PASS해야 합니다.
 
-### Step 6 — ChatGPT custom MCP app 등록
+### Step 7 — ChatGPT custom MCP app 등록
 
-ChatGPT에서 §11의 절차대로 새 custom MCP app을 생성합니다.
+SPARK runtime과 tunnel이 healthy/ready인 상태에서 ChatGPT에 등록합니다.
 
-- App name: `SPARK`
-- 기존 Secure MCP Tunnel과 같은 endpoint/connection을 사용
-- `Scan Tools` 완료까지 기다림
-- Actions가 정확히 **10개**인지 확인
-- `read_file`, `write_file`, `run_command` smoke test
+1. ChatGPT에서 developer mode를 활성화합니다.
+2. Apps → Create에서 새 custom MCP app을 만듭니다.
+3. 이름은 **`SPARK`**로 지정합니다.
+4. Connection은 **`Tunnel`**을 선택합니다.
+5. Step 1에서 만든 tunnel을 선택하거나 `tunnel_id`를 붙여넣습니다.
+   - private/local MCP URL을 ChatGPT에 직접 입력하지 않습니다.
+6. `Scan Tools`를 실행하고 완료될 때까지 기다립니다.
+7. Actions가 정확히 **10개**인지 확인합니다.
+8. Create 후 app을 활성화합니다.
 
-기존 `SPARK_Transport`가 이미 게시된 Business custom app이면 새 `SPARK` 앱의 동작을 먼저 확인한 뒤 기존 앱을 제거합니다.
+Business에서 이미 publish된 `SPARK_Transport` custom app은 이름/metadata를 직접 바꿀 수 없습니다. 새 `SPARK` app을 먼저 만들고 검증한 뒤 기존 app을 제거합니다.
 
-### Step 7 — 일상 lifecycle
+### Step 8 — ChatGPT smoke test
+
+새 `SPARK` app을 선택한 chat에서 다음을 확인합니다.
+
+1. `list_directory` 또는 `read_file` 성공
+2. test file에 대한 `create_file` / `write_file` 성공
+3. `run_command` simple command 성공
+4. Actions가 10개인지 다시 확인
+
+## 5. Lifecycle
+
+Repository root에서 사용합니다.
 
 ```cmd
 SPARK.cmd          rem help
@@ -228,92 +229,59 @@ SPARK.cmd stop
 SPARK.cmd validate
 ```
 
-`ledger/`, `recovery/`, PID, log, ChatGPT UI runtime state 등은 필요할 때 자동 생성되는 local runtime state이며 clone/package에 포함되지 않습니다.
+- `start`: Transport → Secure MCP Tunnel → ChatGPT UI 순서로 시작
+- `status`: Transport, Tunnel, ChatGPT, ChatGPT UI 상태 표시
+- `restart`: 전체 runtime 재시작
+- `stop`: tunnel-client, Transport, ChatGPT UI watcher, ChatGPT 종료
+- `validate`: Windows Transport CRUD/command/Recycle Bin 검증
 
-## 5. Tunnel key file
+## 6. Current Security Behavior
 
-0.0.0에서는 tunnel Runtime API key를 **파일 하나로 고정**해서 읽습니다. Environment variable이나 `env:` / `file:` prefix를 config에 쓰지 않습니다.
+### Filesystem
 
-기본 config:
+- allowed root 밖 경로 차단
+- `..` traversal 차단
+- symlink / NTFS junction escape 차단
+- Root 자체 삭제 금지
+- multi-root에서 같은 상대경로가 둘 이상의 Root에 있으면 `AMBIGUOUS_ROOT_PATH`
+- `delete_path`는 Windows Recycle Bin 사용
+- Recycle Bin 실패 시 permanent-delete fallback 없음
 
-```json
-"controlPlaneApiKeyFile": ".runtime/secrets/control-plane-api-key.txt"
-```
+### Command execution
 
-파일 생성:
+`run_command`는:
 
-```cmd
-mkdir .runtime\secrets 2>NUL
-notepad .runtime\secrets\control-plane-api-key.txt
-```
-
-파일에는 실제 Runtime API key 한 줄만 저장합니다.
-
-`.runtime/` 전체는 `.gitignore` 대상이므로 key file은 Git에 올라가지 않습니다.
-
-## 6. Lifecycle
-
-Repository root에서 `SPARK.cmd`를 인자 없이 실행하면 도움말을 표시합니다. 실제 runtime은 `SPARK.cmd start` 한 번으로 Transport + Secure MCP Tunnel + ChatGPT UI를 시작합니다.
-
-```cmd
-SPARK.cmd
-SPARK.cmd start
-SPARK.cmd restart
-SPARK.cmd status
-SPARK.cmd stop
-SPARK.cmd validate
-```
-
-`start`는 Transport health와 tunnel readiness를 확인한 뒤 통합 ChatGPT UI runtime을 통해 ChatGPT Windows app을 CDP 모드로 시작하고 현재 theme을 적용합니다. 이미 정상 실행 중인 Transport/tunnel/ChatGPT UI 구성요소는 재사용합니다. `status`는 Transport, tunnel, ChatGPT process와 ChatGPT UI watcher/CDP 상태를 각각 표시합니다. `stop`은 tunnel-client, Transport, ChatGPT UI watcher, ChatGPT를 순서대로 종료합니다. `restart`는 stop 후 start를 실행합니다.
-
-기본 ChatGPT UI 설정:
-
-```json
-"chatgptUi": {
-  "enabled": true,
-  "theme": "dark-red"
-}
-```
-
-ChatGPT UI 통합을 사용하지 않으려면 `chatgptUi.enabled`를 `false`로 설정합니다. 현재 0.0.0에서 구현된 UI 기능은 CDP 기반 theme 적용이며, 이후 font size·wrapping·usage 표시도 같은 `modules/chatgpt-ui/` sub-project에 추가합니다.
-
-## 7. Delete / Recycle Bin Policy
-
-`delete_path`는 source path를 allowed-root policy로 검증한 뒤 Windows Recycle Bin으로 이동합니다.
-
-- outside-root source 거부
-- root 자체 삭제 금지
-- traversal/symlink/junction escape 거부
-- source delete 권한 또는 Recycle Bin operation 실패 시 explicit error
-- **permanent delete fallback 없음**
-
-Windows CI에서 actual Recycle Bin source-removal test를 통과했습니다.
-
-## 8. Command Execution Policy
-
-예:
-
-```json
-{"command":"cmd.exe","args":["/c","dir"],"cwd":".","timeoutMs":10000}
-```
-
-0.0.0 behavior:
-
+- current-user / non-elevated 실행
 - explicit executable + argv
-- `shell:false` by default
-- current-user / non-elevated
-- cwd must be inside allowed root
-- timeout
-- child process-tree cleanup
+- allowed root 내부 cwd 요구
+- timeout + child process-tree cleanup
 - bounded stdout/stderr
-- exit code/signal/duration
-- automatic UAC/RunAs 없음
+- exit code/signal/duration 반환
 
-**주의:** cwd confinement은 OS filesystem sandbox가 아닙니다. Child process는 current user 권한으로 root 밖 resource를 접근할 가능성이 있습니다. Distribution-grade command sandbox는 후속 hardening입니다.
+**cwd confinement은 OS filesystem sandbox가 아닙니다.** 실행한 process는 현재 Windows 사용자 권한을 가집니다.
 
-Windows timeout cleanup은 현재 verified tree termination을 사용하며, native Windows Job Object backend는 후속 hardening debt입니다.
+## 7. Runtime State
 
-## 9. 테스트
+`.runtime/`은 machine-local이며 Git에 포함되지 않습니다.
+
+현재 사용되는 항목:
+
+```text
+.runtime/
+├─ config/             # spark.local.json
+├─ secrets/            # tunnel Runtime API key
+├─ tunnel-profiles/    # generated tunnel-client profile
+├─ ledger/             # operation 발생 시 자동 생성
+├─ recovery/           # recoverable mutation 시 자동 생성
+├─ spark.log           # Transport log
+├─ spark.pid
+├─ tunnel-client.pid
+└─ tunnel-doctor.log   # tunnel doctor 실행 시 생성
+```
+
+`ledger/`와 `recovery/`는 clone/package에 없어도 정상이며 필요할 때 자동 생성됩니다.
+
+## 8. Validation
 
 ```cmd
 npm test
@@ -321,62 +289,36 @@ npm run chatgpt-ui:validate
 SPARK.cmd validate
 ```
 
-GitHub Actions release-version verification:
+0.0.0 source는 GitHub Actions에서 Node 24 기준 Windows와 Ubuntu regression을 통과했습니다.
 
-| Target | Result |
-|---|---|
-| Ubuntu / Node 24 | **PASS** |
-| Windows / Node 24 | **PASS** |
-
-Detailed automated and live verification history is maintained in local-only `_pArc/SWE3.md`.
-
-## 10. Brain Host Cost Strategy
-
-SPARK는 cost/allowance를 네 경로로 구분합니다.
+## 9. Current Repository Layout
 
 ```text
-A. Consumer subscription Chat + connector/MCP
-B. Coding-product allowance (Work/Codex/Claude Code)
-C. Pay-as-you-go API/usage credit
-D. Local model
+SPARK/
+├─ modules/
+│  ├─ transport/
+│  │  ├─ config/
+│  │  ├─ scripts/
+│  │  ├─ src/
+│  │  ├─ test/
+│  │  └─ tools/
+│  └─ chatgpt-ui/
+│     ├─ config/
+│     ├─ scripts/
+│     ├─ src/
+│     └─ test/
+├─ .runtime/           # local-only, clone에는 없음
+├─ docs/
+├─ scripts/            # start-all/status-all/stop-all
+├─ SPARK.cmd
+└─ package.json
 ```
 
-CatDesk가 제시하는 `3,000 messages/week`는 historical GPT-5.5 Chat allowance이며 current GPT-5.6 guaranteed quota로 사용하지 않습니다. Claude Pro/Max의 official remote MCP path는 future Brain Gateway 후보로 기록했지만 0.0.0에는 구현하지 않았습니다.
+## 10. Baseline
 
-자세한 Brain Host 비교와 source-reference study는 `docs/ARCH.md`의 해당 chapter에 통합되어 있습니다.
-
-## 11. ChatGPT custom MCP app 등록 / SPARK 이름 적용
-
-ChatGPT에 등록된 custom MCP app의 표시명은 MCP `serverInfo.name`만 변경한다고 자동으로 바뀌지 않습니다. SPARK Transport service는 `serverInfo.name=SPARK`를 광고하지만 ChatGPT 쪽 앱 이름은 별도의 등록 metadata입니다.
-
-현재 OpenAI 공식 절차 기준(2026-09-14 확인):
-
-1. ChatGPT에서 developer mode를 활성화합니다. 이 단계는 custom MCP app을 생성하기 위해 필요합니다.
-   - Business: 관리자/소유자가 Workspace settings → Apps → Create에서 developer mode를 사용할 수 있습니다.
-   - Enterprise/Edu: Settings → Apps → Advanced Settings에서 developer mode를 활성화할 수 있습니다.
-2. 기존 앱이 아직 Dev/draft 상태이고 `Manage`에서 이름 수정이 가능하면 앱 이름을 `SPARK`로 변경합니다.
-3. Business에서 이미 publish된 앱은 이름/메타데이터를 수정할 수 없으므로 새 custom app을 만듭니다. 개발자 모드의 미게시 앱이라면 Manage에서 이름/로고 수정이 가능합니다.
-   - 이름: `SPARK`
-   - Endpoint: 현재 Secure MCP Tunnel이 제공하는 MCP endpoint
-   - Authentication: 현재 tunnel/profile 설정과 동일한 방식
-   - `Scan Tools` 실행
-   - 정확히 10개 SPARK tool이 보이는지 확인
-   - Create 후 read/write/run_command smoke test
-4. 새 `SPARK` 앱이 정상 동작하는 것을 확인한 뒤 기존 `SPARK_Transport` 앱을 제거합니다. 기존 앱부터 먼저 삭제하지 않는 것이 안전합니다. OpenAI 공식 문서에는 custom app 표시 이름이 전역적으로 유일해야 한다는 요구나 별도의 전파 대기 시간이 명시되어 있지 않습니다. 생성 시 Tool Scan 완료까지는 기다려야 합니다.
-5. MCP tool/schema가 변경되면 ChatGPT 앱 설정에서 Refresh/Scan Tools를 다시 수행합니다.
-
-공식 참고: `https://help.openai.com/en/articles/12584461`
-
-로컬 MCP server는 ChatGPT가 직접 접속할 수 없으므로 현재 구조처럼 Secure MCP Tunnel을 사용합니다.
-
-> 현재 `SPARK_Transport`가 이미 게시된 Business custom app이라면 이름을 직접 `SPARK`로 고치는 UI가 없는 것이 정상입니다. 새 `SPARK` 앱을 생성 → Scan Tools 완료 → 10개 action 확인 → smoke test → 기존 `SPARK_Transport` 제거 순서로 전환합니다.
-
-## 12. Baseline
-
-- `0.0.0`: 현재까지 검증된 **private-use baseline**
-- `0.0.1`: 다음 단계인 **multi-user usage / deployment**
-- `0.0.0` tracked source에는 사용자 개인 absolute path, 실제 tunnel ID/API key, local runtime state를 포함하지 않습니다.
-
-## 13. Final private-use acceptance
-
-Source/automated `0.0.0` gate와 이전 live mutation/exec E2E는 PASS입니다. 이 baseline source를 실제 Transport service가 다시 읽도록 `SPARK.cmd restart`한 뒤, Transport version `0.0.0`, tunnel ready, ChatGPT UI active, ChatGPT custom app 이름 `SPARK`를 최종 확인합니다.
+- Version: **0.0.0**
+- Name: **SPARK — Symbiotic Personal AI Robotic Keeper**
+- Current Brain path: **ChatGPT → Secure MCP Tunnel → SPARK Transport**
+- Current Windows UI integration: **ChatGPT UI CDP theme runtime**
+- MCP actions: **10**
+- private config, secrets, PID/profile, ledger/recovery는 tracked source에 포함되지 않습니다.
