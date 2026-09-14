@@ -64,6 +64,8 @@ test('Windows lifecycle scripts preserve help/start/restart/status/stop contract
   assert.match(start, /\.runtime\\config\\spark\.local\.json/);
   assert.match(start, /Test-Path -LiteralPath \$moduleConfig -PathType Leaf/);
   assert.match(start, /Get-Process -Name 'ChatGPT'/);
+  assert.match(start, /npm run --silent transport:start/);
+  assert.match(status, /npm run --silent transport:status/);
   assert.match(start, /\.StartsWith\('\[S2-08\]'\)/);
   assert.doesNotMatch(start, /-like\s+'\[S2-0[78]\]\*'/i);
   assert.match(start, /\$readyTimeoutSeconds=60/);
@@ -76,9 +78,10 @@ test('Windows lifecycle scripts preserve help/start/restart/status/stop contract
   assert.match(status, /IDENTITY-MISMATCH/);
   assert.match(status, /tunnel-runtime\.json/);
   assert.match(status, /--require-control-plane-poll/);
-  assert.match(start, /health\?details=true/);
-  assert.match(start, /health\/mcp/);
-  assert.match(start, /health\/control-plane/);
+  assert.doesNotMatch(start, /health\?details=true/);
+  assert.doesNotMatch(start, /health\/mcp/);
+  assert.doesNotMatch(start, /health\/control-plane/);
+  assert.match(start, /health --port 8080 --pid-file .* --require-control-plane-poll --json/);
   assert.doesNotMatch(start, /did not become ready within 20 seconds/i);
   assert.match(start, /remains running as PID/);
   assert.match(start, /Start-ChatGPTExperience/);
@@ -94,5 +97,8 @@ test('Windows lifecycle scripts preserve help/start/restart/status/stop contract
   assert.match(stop, /Stop-Process -Name|Stop-Process/);
   assert.match(uiLauncher, /--remote-debugging-port=\$port/);
   assert.match(uiLauncher, /start-chatgpt-ui|SPARK ChatGPT UI/i);
+  assert.match(uiLauncher, /\[UI-01\].*Theme config validated/);
+  assert.match(uiLauncher, /\[UI-06\].*startup complete/);
+  assert.doesNotMatch(uiLauncher, /\$result\s*\|\s*ConvertTo-Json/);
   assert.match(uiCli, /Chrome DevTools|CDP|apply|restore/i);
 });

@@ -8,8 +8,23 @@ if(-not $ConfigPath){
 $env:SPARK_CONFIG=$ConfigPath
 
 Write-Host '[S2-STATUS-01] Transport service'
+$transportStatus=$null
+$transportStatusExit=$null
 Push-Location $root
-try{& npm run transport:status}catch{}finally{Pop-Location}
+try{
+  $transportStatusOutput=@(& npm run --silent transport:status 2>&1)
+  $transportStatusExit=$LASTEXITCODE
+  if($transportStatusExit -eq 0 -and $transportStatusOutput){
+    try{$transportStatus=($transportStatusOutput -join [Environment]::NewLine) | ConvertFrom-Json}catch{}
+  }
+}catch{}finally{Pop-Location}
+if($transportStatus){
+  Write-Host "$($transportStatus.status) (pid=$($transportStatus.pid), healthy=$($transportStatus.healthy))"
+}elseif($transportStatusExit -eq 0){
+  Write-Host 'unknown'
+}else{
+  Write-Host 'not-running'
+}
 
 Write-Host '[S2-STATUS-02] Tunnel readiness / identity'
 $config=$null

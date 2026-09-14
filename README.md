@@ -1,5 +1,9 @@
 # SPARK — Symbiotic Personal AI Robotic Keeper
 
+<p align="center">
+  <img src="docs/spark_icon2.png" alt="SPARK — Symbiotic Personal AI Robotic Keeper" width="900">
+</p>
+
 > **Agent quick start:** 이 README의 `Installation` 절을 위에서 아래로 그대로 실행하면 새 Windows PC에서 SPARK 0.0.0 private-use baseline을 설치하고 ChatGPT custom MCP app까지 등록할 수 있습니다.
 
 SPARK는 **Symbiotic Personal AI Robotic Keeper**의 약자입니다. 현재 0.0.0은 ChatGPT를 OpenAI Secure MCP Tunnel로 Windows PC의 SPARK Transport에 연결하여 local filesystem CRUD와 simple command execution을 표준 MCP로 제공합니다. ChatGPT Windows app에는 CDP 기반 ChatGPT UI theme runtime이 함께 포함됩니다.
@@ -200,23 +204,75 @@ SPARK runtime과 tunnel이 healthy/ready인 상태에서 ChatGPT에 등록합니
 1. ChatGPT에서 developer mode를 활성화합니다.
 2. Apps → Create에서 새 custom MCP app을 만듭니다.
 3. 이름은 **`SPARK`**로 지정합니다.
-4. Connection은 **`Tunnel`**을 선택합니다.
-5. Step 1에서 만든 tunnel을 선택하거나 `tunnel_id`를 붙여넣습니다.
+4. 필요하면 app logo로 `docs/spark_icon1.png`를 사용합니다. 이 파일은 256×256 PNG이며 10 KB 미만입니다.
+5. Connection은 **`Tunnel`**을 선택합니다.
+6. Step 1에서 만든 tunnel을 선택하거나 `tunnel_id`를 붙여넣습니다.
    - private/local MCP URL을 ChatGPT에 직접 입력하지 않습니다.
-6. `Scan Tools`를 실행하고 완료될 때까지 기다립니다.
-7. Actions가 정확히 **10개**인지 확인합니다.
-8. Create 후 app을 활성화합니다.
+7. `Scan Tools`를 실행하고 완료될 때까지 기다립니다.
+8. Actions가 정확히 **10개**인지 확인합니다.
+9. Create 후 app을 활성화합니다.
 
-Business에서 이미 publish된 `SPARK_Transport` custom app은 이름/metadata를 직접 바꿀 수 없습니다. 새 `SPARK` app을 먼저 만들고 검증한 뒤 기존 app을 제거합니다.
+Business에서 이미 publish된 custom app은 현재 직접 이름/metadata를 수정할 수 없습니다. 기존 `SPARK_Transport`를 `SPARK`로 바꾸려면 새 `SPARK` app을 recreate/publish한 뒤 기존 app을 **disable**합니다. UI에서 remove/delete가 제공되는 경우에만 제거하고, 없으면 disabled 상태로 둡니다. 개발자 모드의 미게시 app은 Manage에서 이름과 logo를 수정할 수 있습니다.
+
+OpenAI 공식 안내:
+
+- Developer mode / custom MCP apps: https://help.openai.com/en/articles/12584461-developer-mode-and-mcp-apps-in-chatgpt
+- Secure MCP Tunnel permission troubleshooting: https://github.com/openai/tunnel-client/blob/master/docs/permissions.md
+
+#### Create / Scan Tools가 실패할 때
+
+**local MCP server가 잘못됐다고 바로 판단하지 마십시오.** SPARK app 생성 과정은 Transport뿐 아니라 Secure MCP Tunnel의 Control Plane 인증/권한과 workspace 연결이 모두 정상이어야 합니다.
+
+먼저 다음을 확인합니다.
+
+```cmd
+SPARK.cmd status
+.\modules\transport\tools\tunnel-client\tunnel-client.exe health --port 8080 --pid-file .runtime\tunnel-client.pid --require-control-plane-poll --json
+```
+
+정상 기준:
+
+```text
+Tunnel: ready (identity=verified, ..., control-plane=ok)
+health result: ok
+control_plane_poll.ok: true
+```
+
+`/readyz`만 `ready`라고 해서 충분하지 않습니다. Runtime API key는 대상 tunnel에 대해 **Tunnels Read + Use** 권한이 있어야 하고, 해당 tunnel은 ChatGPT에서 사용하는 workspace에 연결되어 있어야 합니다. `403` polling 또는 `control_plane_poll.ok=false`이면 MCP protocol을 수정하기 전에 key 권한, tunnel ID, workspace 연결을 먼저 확인합니다. 새 tunnel은 생성 직후 약 25–30초 activation 시간이 필요할 수 있습니다.
+
+이번 1.4 과정에서 실제로 혼동을 일으켰던 오류도 구분해서 봐야 합니다.
+
+- `MCP SSE probe returned 404 from openai.org`: OpenAI `tunnel-client` issue #35에서 같은 증상이 보고됐습니다. 그중 Windows 재현 하나는 Runtime API key가 `401 Unauthorized`로 거부되어 **Control Plane poll이 한 번도 성공하지 않은 상태**가 원인이었고, key를 바로잡아 `control_plane_poll.ok=true`가 되자 이 증상은 사라졌습니다. 따라서 이 오류가 보이면 SPARK에 SSE endpoint를 임의로 추가하기 전에 Control Plane poll부터 확인합니다. https://github.com/openai/tunnel-client/issues/35
+- `MCP server/discover response was inconsistent from openai.org` / HTTP 424: OpenAI `tunnel-client` issue #63은 v0.0.14의 **embedded MCP stub**이 modern stateless `2026-07-28` discovery를 올바르게 처리하지 못한 별도 문제였습니다. OpenAI는 source `master`에서 이를 수정했지만 해당 issue 종료 시점의 published v0.0.14에는 fix가 포함되지 않았다고 명시했습니다. SPARK는 embedded stub이 아니라 자체 HTTP MCP server가 `2026-07-28` `server/discover`/`tools/list`/`tools/call`을 직접 구현하므로 같은 오류 문자열만으로 SPARK server bug라고 단정하지 않습니다. https://github.com/openai/tunnel-client/issues/63
+
+SPARK가 사용하는 현재 profile은 **no-auth local MCP + Secure MCP Tunnel**입니다. 별도의 local MCP OAuth를 요구하지 않습니다. 다만 ChatGPT app 자체가 인증/권한 prompt를 표시하는 경우에는 해당 인증을 완료한 뒤 `Scan Tools`를 다시 실행해야 합니다.
+
+#### `@SPARK`가 보이는데 tool을 사용할 수 없을 때
+
+ChatGPT에서 app이 목록에 보이는 것과 **현재 message에 app tool schema가 실제 선택/주입된 것**은 같은 의미가 아닙니다.
+
+1. 해당 message에서 Plugins/Apps 메뉴의 **`SPARK`**를 실제로 선택하거나 `@SPARK` mention을 붙입니다.
+2. 인증/권한 prompt가 있으면 먼저 완료합니다.
+3. 새 data/tool call이 필요한 후속 message에서는 필요하면 `@SPARK`를 다시 선택합니다.
+4. 그 뒤 Actions가 정확히 10개인지 확인합니다.
+
+1.4 acceptance에서도 처음에는 `SPARK` app이 UI에 보였지만 현재 turn에 namespace가 주입되지 않았고, **authorized `@SPARK` selection 후 정확히 10개 Actions가 노출되어 E2E가 성공**했습니다. 따라서 이 증상만 보고 SPARK Transport가 tool을 제공하지 못한다고 판단하지 않습니다.
 
 ### Step 8 — ChatGPT smoke test
 
 새 `SPARK` app을 선택한 chat에서 다음을 확인합니다.
 
-1. `list_directory` 또는 `read_file` 성공
-2. test file에 대한 `create_file` / `write_file` 성공
-3. `run_command` simple command 성공
-4. Actions가 10개인지 다시 확인
+1. Actions가 정확히 10개인지 확인
+2. `list_directory` 또는 `read_file` 성공
+3. test-only file에 대한 `create_file` / `write_file` 성공
+4. `run_command` simple command 성공
+5. mutation test artifact는 `delete_path`로 Windows Recycle Bin에 정리
+
+현재 repository의 branding assets:
+
+- `docs/spark_icon1.png` — 256×256 app icon, 10 KB 미만
+- `docs/spark_icon2.png` — README/GitHub banner
+- `docs/spark_icon3.png` — large square artwork
 
 ## 5. Lifecycle
 
