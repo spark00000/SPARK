@@ -85,15 +85,32 @@ Write-Host "[S2-06] PASS - tunnel-client ready: $client"
 
 $profile=$config.tunnel.profile
 $runtime=Join-Path $root '.runtime';New-Item -ItemType Directory -Force $runtime|Out-Null
+$profileDir=Join-Path $runtime 'tunnel-profiles';New-Item -ItemType Directory -Force $profileDir|Out-Null
+$profilePath=Join-Path $profileDir ($profile + '.yaml')
 Write-Host "[S2-07] Checking tunnel profile: $profile"
-& $client doctor --profile $profile --explain *> (Join-Path $runtime 'tunnel-doctor.log')
-if($LASTEXITCODE -ne 0){
-  Write-Host '[S2-07] Profile not ready; initializing no-auth MCP profile...'
-  & $client init --sample sample_mcp_remote_no_auth --profile $profile --tunnel-id $config.tunnel.id --mcp-server-url $config.tunnel.localMcpUrl --control-plane-api-key-ref $keyRef
+Write-Host "[S2-07] SPARK profile directory: $profileDir"
+
+if(Test-Path $profilePath){
+  & $client doctor --profile $profile --profile-dir $profileDir --explain *> (Join-Path $runtime 'tunnel-doctor.log')
+  if($LASTEXITCODE -ne 0){
+    $backupDir=Join-Path $runtime 'tunnel-profile-backups';New-Item -ItemType Directory -Force $backupDir|Out-Null
+    $stamp=Get-Date -Format 'yyyyMMdd-HHmmss'
+    $backupPath=Join-Path $backupDir ($profile + '-' + $stamp + '.yaml')
+    Copy-Item -LiteralPath $profilePath -Destination $backupPath -Force
+    if(-not (Test-Path $backupPath)){Fail-Step 'S2-07' 'failed to create tunnel profile recovery backup'}
+    Write-Host "[S2-07] Existing SPARK profile failed doctor; backup verified: $backupPath"
+    Write-Host '[S2-07] Reinitializing SPARK-owned profile...'
+    & $client init --force --sample sample_mcp_remote_no_auth --profile $profile --profile-dir $profileDir --tunnel-id $config.tunnel.id --mcp-server-url $config.tunnel.localMcpUrl --control-plane-api-key-ref $keyRef
+    if($LASTEXITCODE -ne 0){Fail-Step 'S2-07' 'tunnel profile reinit failed'}
+  }
+}else{
+  Write-Host '[S2-07] SPARK-owned profile not found; initializing no-auth MCP profile...'
+  & $client init --sample sample_mcp_remote_no_auth --profile $profile --profile-dir $profileDir --tunnel-id $config.tunnel.id --mcp-server-url $config.tunnel.localMcpUrl --control-plane-api-key-ref $keyRef
   if($LASTEXITCODE -ne 0){Fail-Step 'S2-07' 'tunnel profile init failed'}
-  & $client doctor --profile $profile --explain
-  if($LASTEXITCODE -ne 0){Fail-Step 'S2-07' 'tunnel doctor failed after init'}
 }
+
+& $client doctor --profile $profile --profile-dir $profileDir --explain *> (Join-Path $runtime 'tunnel-doctor.log')
+if($LASTEXITCODE -ne 0){Fail-Step 'S2-07' 'tunnel doctor failed'}
 Write-Host '[S2-07] PASS - tunnel profile ready'
 
 try{
@@ -104,7 +121,7 @@ try{
 Write-Host '[S2-08] Starting tunnel-client with direct CreateProcess semantics...'
 $psi=New-Object System.Diagnostics.ProcessStartInfo
 $psi.FileName=$client
-$psi.Arguments="run --profile `"$profile`""
+$psi.Arguments="run --profile `"$profile`" --profile-dir `"$profileDir`""
 $psi.WorkingDirectory=$root
 $psi.UseShellExecute=$false
 $psi.CreateNoWindow=$true
@@ -124,7 +141,7 @@ $deadline=(Get-Date).AddSeconds(20)
 do{
   Start-Sleep -Milliseconds 500
   if($proc.HasExited){
-    Fail-Step 'S2-09' "tunnel-client exited before readyz, exitCode=$($proc.ExitCode). Check .runtime\tunnel-doctor.log and run tunnel-client.exe run --profile $profile manually for console diagnostics."
+    Fail-Step 'S2-09' "tunnel-client exited before readyz, exitCode=$($proc.ExitCode). Check .runtime\tunnel-doctor.log and run tunnel-client.exe run --profile $profile --profile-dir $profileDir manually for console diagnostics."
   }
   try{
     $ready=Invoke-WebRequest -UseBasicParsing -TimeoutSec 1 'http://127.0.0.1:8080/readyz'
