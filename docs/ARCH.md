@@ -83,7 +83,7 @@ AI Brain
 11. **User-visible ledger** — chat transcript만 operation history로 간주하지 않는다.
 12. **No model API dependency** — Transport service 자체는 OpenAI/Anthropic/Google model API를 호출하지 않는다.
 13. **Native security delegation** — SPARK는 filesystem/OS provider가 제공하는 native security primitive를 PAL/Body Port를 통해 재사용하며, 같은 목적의 별도 SPARK-specific security substrate를 만들지 않는다.
-14. **Security transparency over false isolation** — 현 단계에서는 최소한의 native mechanism을 우선하고 container/VM 같은 heavyweight isolation을 default로 도입하지 않는다. 실용적인 native enforcement가 없으면 자체 parser/guardrail로 안전하다고 가장하지 않고 inherited security hole을 명시한다.
+14. **Security transparency over false isolation** — 현 단계에서는 최소한의 native mechanism을 우선하고 container/VM 같은 heavyweight isolation을 default로 도입하지 않는다. 실용적이고 단순한 native enforcement가 없으면 자체 parser/guardrail로 안전하다고 가장하지 않고 inherited security hole과 영향 범위를 명시한 뒤 implementation을 TBD로 defer한다.
 
 ## 4. Brain Gateway
 
@@ -262,7 +262,8 @@ SPARK policy intent
 1. capability를 실제보다 강하게 표현하지 않는다.
 2. application-level parser/guardrail을 security boundary라고 부르지 않는다.
 3. 해당 security hole과 영향 범위를 Architecture/Security 문서에 명확히 기록한다.
-4. heavyweight isolation은 별도 architecture decision과 명시적 scope가 있을 때만 검토한다.
+4. practical native enforcement가 단순하지 않거나 운영 부작용이 큰 경우 구현을 억지로 추가하지 않고 `TBD`로 defer한다.
+5. heavyweight isolation은 별도 architecture decision과 명시적 scope가 있을 때만 검토한다.
 
 ### 10.3. Current 0.0.0 Command Execution Trust Statement
 
@@ -282,9 +283,33 @@ SPARK policy intent
 
 따라서 현재 `R/W/X`에서 `X`는 "해당 root를 command working directory로 사용할 수 있음"을 의미하며, "child process가 해당 root 밖을 읽거나 쓸 수 없음"을 의미하지 않는다. FileService의 allowed-root confinement와 ProcessService의 host process authority를 동일한 boundary로 간주해서는 안 된다.
 
+현재 영향 범위는 명시적으로 다음과 같다.
+
+- executable 자체는 allowed root 내부에 있을 필요가 없다. `PATH` 또는 absolute executable path로 현재 OS user가 실행 가능한 program을 시작할 수 있다.
+- command argv, script/config file, stdin, environment, registry, network response 또는 실행 중 계산된 path는 FileService path policy의 중재 대상이 아니다.
+- allowed root 중 하나에 `X`가 있으면 그 root에서 시작한 arbitrary child process는 현재 OS user가 허용받은 범위에서 `R`-only root 또는 아예 configured allowed root가 아닌 경로를 직접 read/write/delete할 수 있다.
+- `delete_path`의 Recycle Bin-only 규칙도 FileService semantics이며 arbitrary child process의 `del`, `Remove-Item`, library/API call 같은 삭제에는 적용되지 않는다.
+- 따라서 현재 `R/W` capability는 FileService에 대해 강제되지만 ProcessService의 child filesystem authority를 제한하지 않는다.
+
+이 gap은 command-line path 문자열 검사로 해결할 수 없다. 외부 target은 allowed-root 내부의 list/config/script file, environment variable, stdin 또는 child process 내부 로직에서 간접적으로 결정될 수 있기 때문이다. ProcessService filesystem/network confinement은 **TBD**이며, practical provider-native mechanism이 선택되고 실제 outside-root denial regression을 통과하기 전까지 implemented security boundary로 주장하지 않는다.
+
 0.0.0 Windows timeout cleanup은 verified `taskkill /T /F` tree termination을 사용한다. CatDesk에서 확인한 Windows Job Object는 stronger process ownership backend지만 filesystem confinement을 제공하지 않는다. Windows command filesystem boundary를 강화할 때는 별도 SPARK parser가 아니라 Windows가 제공하는 native token/ACL/provider mechanism을 PAL에서 재사용하는 방향을 우선한다.
 
-### 10.4. Native Security State Lifecycle
+### 10.4. Cross-Platform Process-Confinement Disposition — TBD
+
+`cwd`만 검사한 뒤 ambient user authority로 child process를 실행하면 같은 종류의 gap은 Windows에만 한정되지 않는다. Linux와 macOS도 별도 OS-level confinement 없이 current user로 `spawn/exec`하면 child가 그 user가 접근 가능한 filesystem을 직접 접근할 수 있다.
+
+| Provider | Native/lightweight candidate | SPARK 0.0.0 disposition |
+|---|---|---|
+| Windows | restricted token / sandbox SID or account / NTFS ACL-ACE / Job Object / WFP 등 | filesystem/network confinement **TBD**; 현재 미구현 gap 명시 |
+| Linux | Landlock 같은 kernel-native filesystem restriction과 필요한 syscall/network primitive; 또는 provider가 이미 제공하는 native sandbox | **TBD**. 단순 native mechanism 우선 조사; container/bwrap를 SPARK default dependency로 정하지 않음 |
+| macOS | Seatbelt profile 기반 OS sandbox 등 provider-native mechanism | **TBD**. native provider mechanism 재사용 가능성을 우선 검토 |
+
+Linux/macOS에 native primitive가 존재한다는 사실은 현재 SPARK가 안전하다는 의미가 아니다. PAL이 해당 mechanism을 실제 적용하고 `R`-only/unconfigured path의 write/delete denial을 process-tree 전체에서 검증하기 전까지 ProcessService confinement은 미구현이다.
+
+선정 기준은 동일하다: SPARK-specific second security engine을 만들지 않고, 단순하고 운영 가능한 provider-native enforcement가 있으면 PAL에서 재사용한다. 그런 방식이 충분히 단순하지 않으면 현 gap을 문서화한 상태로 **TBD**에 유지한다.
+
+### 10.5. Native Security State Lifecycle
 
 Provider native mechanism이 persistent OS state를 필요로 하는 경우 그 state도 PAL/provider lifecycle의 일부로 취급한다.
 
@@ -410,7 +435,7 @@ Architecture-only / deferred:
 - Drone/Robot/device adapters
 - elevated helper
 - native Windows Job Object backend
-- distribution-grade command sandbox
+- ProcessService filesystem/network confinement — TBD per OS/provider; current `X` remains cwd authorization only
 - alternate SPARK Desktop/Robot UI
 
 ## 17. ADR Summary
@@ -439,6 +464,7 @@ Architecture-only / deferred:
 | ADR-020 | lifecycle console은 concise stage/status projection만 출력하고 detailed diagnostics/audit는 local runtime state에 보존 |
 | ADR-021 | Security enforcement는 PAL/provider가 제공하는 native OS/filesystem mechanism을 재사용하며, 동일 목적의 parallel SPARK-specific sandbox를 만들지 않음 |
 | ADR-022 | Container/VM 같은 heavyweight isolation은 default dependency로 도입하지 않으며, practical native enforcement가 없으면 capability를 과장하지 않고 security gap을 명시 |
+| ADR-023 | Current `run_command`의 `X`는 cwd authorization만 의미한다. child process의 filesystem/network confinement은 provider-native PAL 구현이 검증될 때까지 TBD이며, `R`-only 및 unconfigured paths는 ProcessService boundary로 보호된다고 주장하지 않음 |
 
 ## 18. 0.0.0 Verification Status
 
