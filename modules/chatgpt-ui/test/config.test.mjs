@@ -23,8 +23,8 @@ test("default and dark-red themes expose the same complete color map", async () 
   );
 
   assert.equal(defaultTheme.schemaVersion, 4);
-  assert.equal(defaultTheme.id, "chatgpt-theme-changer-rainbow-map");
-  assert.equal(darkRedTheme.id, "chatgpt-theme-changer-dark-red");
+  assert.equal(defaultTheme.id, "chatgpt-ui-rainbow-map");
+  assert.equal(darkRedTheme.id, "chatgpt-ui-dark-red");
   assert.deepEqual(Object.keys(defaultTheme.colors), Object.keys(THEME_COLOR_GROUPS));
   assert.deepEqual(colorPaths(defaultTheme), THEME_COLOR_KEYS);
   assert.deepEqual(colorPaths(darkRedTheme), THEME_COLOR_KEYS);

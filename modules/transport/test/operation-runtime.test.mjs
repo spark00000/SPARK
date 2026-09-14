@@ -6,6 +6,16 @@ import test from 'node:test';
 import { createOperationLedger } from '../src/ledger.mjs';
 import { createOperationRuntime } from '../src/operation-runtime.mjs';
 
+test('ledger state is created lazily when the runtime starts recording operations',async(t)=>{
+  const base=await fs.mkdtemp(path.join(os.tmpdir(),'spark-ledger-lazy-'));
+  const stateDir=path.join(base,'state');
+  t.after(()=>fs.rm(base,{recursive:true,force:true}));
+  await assert.rejects(()=>fs.access(stateDir));
+  const ledger=createOperationLedger({stateDir});
+  await ledger.record({operationId:ledger.nextOperationId(),operation:'read_file',status:'success',changed:false,summary:'lazy state test'});
+  assert.equal(await fs.readFile(path.join(stateDir,'ledger','operations.jsonl'),'utf8').then(Boolean),true);
+});
+
 test('operation runtime normalizes success and persists ledger',async(t)=>{
   const stateDir=await fs.mkdtemp(path.join(os.tmpdir(),'spark-ledger-'));
   t.after(()=>fs.rm(stateDir,{recursive:true,force:true}));

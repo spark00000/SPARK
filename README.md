@@ -35,8 +35,9 @@ SPARK/
 │  │  ├─ config/   # Transport config template / optional local override
 │  │  ├─ src/
 │  │  ├─ test/
+│  │  ├─ scripts/  # Transport-only bootstrap/validation
 │  │  └─ tools/
-│  ├─ theme/       # ChatGPT Windows CDP theme
+│  ├─ chatgpt-ui/  # ChatGPT Windows UI integration (theme/CDP and future UI controls)
 │  └─ oui/         # future Obsidian UI / clipboard integration
 ├─ .runtime/       # local-only config / secrets / runtime state
 ├─ docs/           # architecture / quality gate
@@ -45,7 +46,7 @@ SPARK/
 └─ SPARK.cmd       # one-click entry point
 ```
 
-새 기능은 독립 lifecycle/config/test 경계가 있으면 `modules/<name>/` sub-project로 추가합니다. Root는 전체 SPARK orchestration과 공통 산출물만 유지합니다.
+새 기능은 독립 lifecycle/config/test 경계가 있으면 `modules/<name>/` sub-project로 추가합니다. Root는 전체 SPARK orchestration과 공통 산출물만 유지합니다. 따라서 root `scripts/`에는 `start-all/status-all/stop-all` 같은 공통 orchestration만 두고, tunnel bootstrap·Transport validation처럼 특정 module 전용 script는 `modules/transport/scripts/`가 소유합니다.
 
 자세한 구조:
 
@@ -90,11 +91,37 @@ retryable
 error?
 ```
 
-`SPARK status`는 daemon health와 최근 operation을 함께 표시합니다.
+`SPARK status`는 Transport health와 최근 operation을 함께 표시합니다.
 
-Default runtime/recovery/ledger state는 repository가 아닌 user-private local state directory에 저장됩니다. `SPARK_STATE_DIR`로 test/development override가 가능합니다.
+`ledger/`와 `recovery/`는 배포 파일이 아니라 runtime state입니다. 둘 다 사전에 존재할 필요가 없으며 실제 operation 기록 또는 recoverable write/modify가 발생할 때 `stateDir` 아래에 자동 생성됩니다. 현재 private-use config는 `stateDir`을 `.runtime`으로 지정하며, `.runtime/` 전체는 Git에서 제외됩니다. `SPARK_STATE_DIR`로 test/development override가 가능합니다.
 
-## 4. Windows config
+## 4. Windows config / fresh installation
+
+### 4.1. 처음 설치
+
+Prerequisite:
+
+- Windows 11
+- Node.js 20+ (`Node 24` CI 검증)
+- ChatGPT에서 사용할 OpenAI Secure MCP Tunnel ID와 control-plane API key
+
+```cmd
+git clone https://github.com/spark00000/SPARK.git
+cd SPARK
+mkdir .runtime\config 2>NUL
+mkdir .runtime\secrets 2>NUL
+copy modules\transport\config\spark.example.json .runtime\config\spark.local.json
+notepad .runtime\config\spark.local.json
+notepad .runtime\secrets\control-plane-api-key.txt
+SPARK.cmd start
+SPARK.cmd status
+```
+
+- `spark.local.json`에서 `transport.allowedRoot`와 `tunnel.id`를 사용자 환경에 맞게 수정합니다.
+- `control-plane-api-key.txt`에는 실제 key 한 줄만 저장합니다.
+- `SPARK.cmd start`는 tunnel-client가 없으면 공식 OpenAI release를 내려받아 checksum을 확인한 뒤 설치합니다.
+- runtime이 정상인 것을 확인한 뒤 §11 절차로 ChatGPT custom MCP app `SPARK`를 등록합니다.
+- `.runtime/`은 clone에 포함되지 않으며 각 사용자가 자신의 machine-local config/secret/runtime state를 생성합니다.
 
 배포/개인 사용에서는 private config를 `.runtime/config/`에 둡니다.
 
@@ -115,7 +142,7 @@ Config 탐색 순서는 다음과 같습니다.
 
 최소한 다음을 실제 환경에 맞게 수정합니다.
 
-- `daemon.allowedRoot`
+- `transport.allowedRoot`
 - `tunnel.id`
 - `tunnel.controlPlaneApiKeyFile`
 
@@ -179,7 +206,7 @@ notepad .runtime\secrets\control-plane-api-key.txt
 
 ## 6. Lifecycle
 
-Repository root에서 `SPARK.cmd`를 인자 없이 실행/더블클릭하면 daemon + Secure MCP Tunnel + ChatGPT Windows app을 한 번에 시작합니다.
+Repository root에서 `SPARK.cmd`를 인자 없이 실행하면 도움말을 표시합니다. 실제 runtime은 `SPARK.cmd start` 한 번으로 Transport + Secure MCP Tunnel + ChatGPT UI를 시작합니다.
 
 ```cmd
 SPARK.cmd
@@ -190,18 +217,18 @@ SPARK.cmd stop
 SPARK.cmd validate
 ```
 
-`start`는 daemon health와 tunnel readiness를 확인한 뒤 통합 Theme runtime을 통해 ChatGPT Windows app을 CDP 모드로 시작하고 theme을 적용합니다. 이미 정상 실행 중인 daemon/tunnel/theme 구성요소는 재사용합니다. `status`는 daemon, tunnel, ChatGPT process와 Theme watcher/CDP 상태를 각각 표시합니다. `stop`은 tunnel-client, daemon, Theme watcher, ChatGPT를 순서대로 종료합니다. `restart`는 stop 후 start를 실행합니다.
+`start`는 Transport health와 tunnel readiness를 확인한 뒤 통합 ChatGPT UI runtime을 통해 ChatGPT Windows app을 CDP 모드로 시작하고 현재 theme을 적용합니다. 이미 정상 실행 중인 Transport/tunnel/ChatGPT UI 구성요소는 재사용합니다. `status`는 Transport, tunnel, ChatGPT process와 ChatGPT UI watcher/CDP 상태를 각각 표시합니다. `stop`은 tunnel-client, Transport, ChatGPT UI watcher, ChatGPT를 순서대로 종료합니다. `restart`는 stop 후 start를 실행합니다.
 
-기본 Theme 설정:
+기본 ChatGPT UI 설정:
 
 ```json
-"theme": {
+"chatgptUi": {
   "enabled": true,
-  "selection": "dark-red"
+  "theme": "dark-red"
 }
 ```
 
-Theme 기능을 사용하지 않으려면 `theme.enabled`를 `false`로 설정합니다. Theme 구현은 `modules/theme/` 아래에 포함되며 외부 Theme 프로젝트나 별도 폴더에 의존하지 않습니다.
+ChatGPT UI 통합을 사용하지 않으려면 `chatgptUi.enabled`를 `false`로 설정합니다. 현재 0.0.0에서 구현된 UI 기능은 CDP 기반 theme 적용이며, 이후 font size·wrapping·usage 표시도 같은 `modules/chatgpt-ui/` sub-project에 추가합니다.
 
 ## 7. Delete / Recycle Bin Policy
 
@@ -243,6 +270,7 @@ Windows timeout cleanup은 현재 verified tree termination을 사용하며, nat
 
 ```cmd
 npm test
+npm run chatgpt-ui:validate
 SPARK.cmd validate
 ```
 
@@ -272,7 +300,7 @@ CatDesk가 제시하는 `3,000 messages/week`는 historical GPT-5.5 Chat allowan
 
 ## 11. ChatGPT custom MCP app 등록 / SPARK 이름 적용
 
-ChatGPT에 등록된 custom MCP app의 표시명은 MCP `serverInfo.name`만 변경한다고 자동으로 바뀌지 않습니다. SPARK daemon은 `serverInfo.name=SPARK`를 광고하지만 ChatGPT 쪽 앱 이름은 별도의 등록 metadata입니다.
+ChatGPT에 등록된 custom MCP app의 표시명은 MCP `serverInfo.name`만 변경한다고 자동으로 바뀌지 않습니다. SPARK Transport service는 `serverInfo.name=SPARK`를 광고하지만 ChatGPT 쪽 앱 이름은 별도의 등록 metadata입니다.
 
 현재 OpenAI 공식 절차 기준:
 
@@ -302,4 +330,4 @@ ChatGPT에 등록된 custom MCP app의 표시명은 MCP `serverInfo.name`만 변
 
 ## 13. Remaining Deployment Acceptance
 
-Source/automated `0.0.0` gate와 이전 live mutation/exec E2E는 PASS입니다. 이 baseline source를 실제 daemon이 다시 읽도록 `SPARK.cmd restart`한 뒤, daemon version `0.0.0`, tunnel ready, Theme active, ChatGPT custom app 이름 `SPARK`를 최종 확인합니다.
+Source/automated `0.0.0` gate와 이전 live mutation/exec E2E는 PASS입니다. 이 baseline source를 실제 Transport service가 다시 읽도록 `SPARK.cmd restart`한 뒤, Transport version `0.0.0`, tunnel ready, ChatGPT UI active, ChatGPT custom app 이름 `SPARK`를 최종 확인합니다.

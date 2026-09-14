@@ -1,7 +1,7 @@
 {
   "$schema": "./theme.schema.json",
   "schemaVersion": 4,
-  "id": "chatgpt-theme-changer-rainbow-map",
+  "id": "chatgpt-ui-rainbow-map",
   "name": "Rainbow Element Map",
   "description": "A deliberately colorful diagnostic theme that makes every supported color role easy to identify on screen.",
   "colors": {
