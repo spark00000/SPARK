@@ -24,7 +24,10 @@
 | daemon lifecycle | PASS |
 | Ubuntu Node 24 CI | PASS |
 | Windows Node 24 CI | PASS |
-| ChatGPT mutation/exec live E2E after local 0.0.1 deployment | PENDING — deployment acceptance |
+| Integrated Theme source/config regression | PASS — local 7/7 before merge, Transport suite 포함 |
+| Integrated Theme launcher validate | PASS |
+| ChatGPT mutation/exec live E2E after local 0.0.1 deployment | PASS — 2026-09-14 live MCP acceptance |
+| Tunnel + Theme + ChatGPT 1-click live E2E | PENDING — integrated source restart acceptance |
 | Independent Architecture Peer | PENDING — process gate |
 
 ## Evidence
@@ -44,7 +47,8 @@ Detailed automated and live verification history is maintained in local-only `_p
 
 - **DEBT-001:** Windows process ownership is verified through timeout tree termination for the Small PoC; native Windows Job Object remains the preferred stronger production backend.
 - **DEBT-002:** `run_command` cwd containment is not an OS filesystem/network sandbox. Distribution-grade containment remains future work.
-- **DEPLOY-001:** The currently running user daemon/tunnel must be updated to 0.0.1 before live ChatGPT mutation/exec E2E can be claimed.
+- **DEPLOY-001:** ChatGPT mutation/exec live MCP E2E는 2026-09-14에 최신 daemon/tunnel 기준으로 완료했습니다.
+- **DEPLOY-002:** 통합된 Tunnel + Theme + ChatGPT 1-click 경로는 이 source를 local에서 restart한 뒤 최종 사용자 runtime acceptance가 필요합니다.
 - **PROCESS-001:** Independent Architecture Peer review has not been executed in this authoring context.
 
 ## Gate Conclusion

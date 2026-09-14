@@ -10,7 +10,8 @@
     "daemon:start": "node src/cli.mjs start",
     "daemon:status": "node src/cli.mjs status",
     "daemon:stop": "node src/cli.mjs stop",
-    "test": "node --test --test-concurrency=1 tests/*.test.mjs",
-    "test:protocol": "node --test --test-concurrency=1 tests/mcp-http.test.mjs"
+    "test": "node --test --test-concurrency=1 tests/*.test.mjs theme/test/*.test.mjs",
+    "test:protocol": "node --test --test-concurrency=1 tests/mcp-http.test.mjs",
+    "theme:validate": "node theme/src/cli.mjs validate --theme theme/config/dark-red-theme.json"
   }
 }

@@ -19,6 +19,10 @@
     "stateDir": ".runtime",
     "recycleBin": true
   },
+  "theme": {
+    "enabled": true,
+    "selection": "dark-red"
+  },
   "tunnel": {
     "enabled": true,
     "id": "tunnel_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",

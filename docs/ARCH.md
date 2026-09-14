@@ -980,3 +980,23 @@ SPARK file operations must preserve logical-to-physical transparency.
 The historical audit found workspace-visible scratch/recovery artifacts in logical tool code. That issue has since been refactored behind the file PAL. Current `write_file` and `modify_file` return private PAL recovery metadata, and regression tests verify that no workspace-visible backup/temp sidecars are created. `move_path` retains direct rename semantics and fails closed on destination collision.
 
 PAL transparency is therefore part of the current verified baseline rather than an open gate.
+
+## 23. Integrated ChatGPT Theme Runtime
+
+SPARK_Transport includes the working CDP-based ChatGPT Theme component under `theme/` while keeping the original `E:/SRC/SPARK_Theme` project independent and unchanged.
+
+Runtime flow:
+
+```text
+SPARK_Transport.cmd
+  -> MCP daemon
+  -> Secure MCP Tunnel
+  -> integrated theme launcher
+  -> ChatGPT Windows app with loopback-only CDP
+  -> theme apply/status verification
+  -> theme reload watcher
+```
+
+The Theme component is not an MCP tool and does not change the 10-tool MCP contract. It belongs to the Client / UX Plane and Windows runtime integration. `theme.enabled=false` falls back to the normal ChatGPT Windows app launch path. `status` reports Theme watcher/CDP health separately, and `stop` terminates the Theme watcher before stopping ChatGPT.
+
+The copied Theme source retains its MIT license under `theme/LICENSE`. Theme runtime state is stored under `theme/.runtime/` and remains ignored by Git.

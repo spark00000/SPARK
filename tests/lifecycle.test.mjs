@@ -48,11 +48,13 @@ test('daemon start/status/stop/restart', async (t) => {
 });
 
 test('Windows one-click lifecycle scripts preserve start/restart/status/stop contract', async () => {
-  const [cmd, start, stop, status] = await Promise.all([
+  const [cmd, start, stop, status, themeLauncher, themeCli] = await Promise.all([
     fs.readFile(path.join(ROOT, 'SPARK_Transport.cmd'), 'utf8'),
     fs.readFile(path.join(ROOT, 'scripts', 'start-all.ps1'), 'utf8'),
     fs.readFile(path.join(ROOT, 'scripts', 'stop-all.ps1'), 'utf8'),
     fs.readFile(path.join(ROOT, 'scripts', 'status-all.ps1'), 'utf8'),
+    fs.readFile(path.join(ROOT, 'theme', 'scripts', 'start-chatgpt-theme-changer.ps1'), 'utf8'),
+    fs.readFile(path.join(ROOT, 'theme', 'src', 'cli.mjs'), 'utf8'),
   ]);
 
   assert.match(cmd, /if "%~1"=="" goto :start/i);
@@ -67,8 +69,17 @@ test('Windows one-click lifecycle scripts preserve start/restart/status/stop con
   assert.match(start, /health\/control-plane/);
   assert.doesNotMatch(start, /did not become ready within 20 seconds/i);
   assert.match(start, /remains running as PID/);
+  assert.match(start, /Start-ChatGPTExperience/);
+  assert.match(start, /theme\\scripts\\start-chatgpt-theme-changer\.ps1/);
+  assert.match(start, /Test-ThemeRuntime/);
   assert.match(status, /Get-Process -Name 'ChatGPT'/);
+  assert.match(status, /Integrated theme runtime/);
+  assert.match(status, /theme\\\.runtime\\active\.json/);
   assert.match(stop, /\$tunnelPid\s*=/);
   assert.doesNotMatch(stop, /\$pid\s*=/i);
+  assert.match(stop, /theme\\\.runtime\\active\.json/);
   assert.match(stop, /Stop-Process -Name|Stop-Process/);
+  assert.match(themeLauncher, /--remote-debugging-port=\$port/);
+  assert.match(themeLauncher, /start-chatgpt-theme-changer|Theme Changer/i);
+  assert.match(themeCli, /Chrome DevTools|CDP|apply|restore/i);
 });
