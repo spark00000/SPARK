@@ -117,7 +117,7 @@ try{
     exit 0
   }
 }catch{
-  if($_.Exception.Message -like '[S2-07]*'){throw}
+  if($_.Exception.Message.StartsWith('[S2-07]')){throw}
 }
 
 $profile=$config.tunnel.profile
