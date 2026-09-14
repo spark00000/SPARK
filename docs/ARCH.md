@@ -341,6 +341,66 @@ Provider native mechanism이 persistent OS state를 필요로 하는 경우 그 
 
 예를 들어 Anthropic Sandbox Runtime의 Windows provider는 dedicated `srt-sandbox` account를 installation-scoped state로 유지하고, session ACE는 reset/process-exit 및 다음 initialize의 crash-recovery에서 정리하며, uninstall은 WFP filters, sandbox account, credential file, setup marker를 제거하는 lifecycle을 제공한다. SPARK가 유사한 provider를 채택할 경우에도 같은 종류의 deterministic lifecycle을 요구한다.
 
+### 10.7. 0.0.1 Intermediate Multi-user Deployment — Per-user Tunnel + Local Authorization
+
+0.0.1의 multi-user/deployment target은 **약 5명 규모의 독립 사용자/PC가 서로 간섭하지 않는 최소 배포 구조**다. 중앙 SPARK payload relay를 두지 않는다. 이 구조는 ChatGPT가 현재 local MCP server에 직접 연결하지 못하고 Secure MCP Tunnel 또는 remote MCP endpoint를 요구하는 provider 제약 때문에 선택하는 **intermediate architecture**이며, 장기적으로 Brain Host가 local MCP hosting을 지원하면 제거 가능한 계층으로 취급한다.
+
+Current ChatGPT path:
+
+```text
+User A ChatGPT app/connection
+  -> unique tunnel_A
+  -> OpenAI Secure MCP Tunnel
+  -> User A local SPARK
+
+User B ChatGPT app/connection
+  -> unique tunnel_B
+  -> OpenAI Secure MCP Tunnel
+  -> User B local SPARK
+```
+
+Deployment invariants:
+
+- user/device/SPARK instance마다 distinct `tunnel_id`를 사용한다. 동일 tunnel을 서로 다른 local SPARK instance가 공유하지 않는다.
+- MCP app display name은 authorization identity가 아니다. 이름이 같거나 workspace에 app이 노출되어 있어도 다른 사용자의 local SPARK authority를 얻어서는 안 된다.
+- 각 local SPARK instance는 **instance-specific credential**을 검증한다. 최소 0.0.1 후보는 high-entropy bearer/access token 또는 API key이며, ChatGPT app configuration이 해당 authentication mode를 제공하는 경우 이를 우선 검토한다.
+- static credential을 사용하면 중앙 OAuth/auth server는 runtime dependency가 아니다. Credential은 instance마다 달라야 하고, local secret store에 저장하며, rotate/revoke 가능해야 한다. `no scheduled expiry`는 허용할 수 있으나 "절대 폐기 불가" credential로 설계하지 않는다.
+- OAuth/OIDC가 필요한 경우 ChatGPT의 app connection/authentication machinery가 OAuth client 역할을 하고 provider-issued credential을 연결 상태로 관리한다. SPARK가 ChatGPT 내부에 별도 auth code를 삽입하는 구조가 아니다. Authorization/token endpoint는 external IdP가 제공하고, MCP payload path는 계속 user-specific Secure MCP Tunnel을 통해 local SPARK로 직접 간다.
+- OAuth `sub` 또는 static token 어느 방식을 쓰든 local SPARK는 **자기 instance에 허용된 principal/credential만** 승인한다. Workspace membership 또는 app visibility만으로 authorization하지 않는다.
+- 중앙 SPARK relay/router를 0.0.1 data plane에 두지 않는다. Filesystem data, command output, media/binary payload가 SPARK-operated cloud relay를 통과하지 않아야 한다.
+
+Auth alternatives for 0.0.1:
+
+| Method | Central always-on auth service | Runtime network dependency | 5-user 0.0.1 disposition |
+|---|---:|---:|---|
+| Per-instance bearer/access token/API key | No | None beyond Secure MCP Tunnel | **Preferred minimum** if ChatGPT app auth mode supports it |
+| OAuth/OIDC with hosted IdP | Yes for login/refresh | Existing token can be validated locally only if token format/key distribution permits | Optional; use when per-user account lifecycle is needed |
+| Custom SSH-style public-key challenge | Would require custom protocol/client support | Depends on design | Not default; ChatGPT app auth does not currently provide a generic SSH challenge UI |
+| Central SPARK payload relay | Yes | Every tool call | **Rejected for 0.0.1** |
+
+Claude Desktop provides a useful contrast: its Desktop Extensions can install and run local MCP servers directly on the user machine. If ChatGPT later provides an equivalent supported local-MCP hosting surface, SPARK SHOULD prefer that provider-native local path and remove the Secure MCP Tunnel/auth indirection where practical rather than preserving the intermediate topology for compatibility alone.
+
+### 10.8. File Content and Binary Transfer Semantics
+
+Current `read_file` is intentionally a **UTF-8 text operation**, not a generic byte-transfer operation. It enforces the configured read-size limit and performs fatal UTF-8 decoding. A file that cannot be decoded as UTF-8 is rejected as unsupported encoding.
+
+SPARK does not define "text versus binary" by filename extension or by a heuristic scan. Filesystems store bytes; some arbitrary binary byte sequences may also happen to be valid UTF-8. Therefore the operation semantics are explicit:
+
+```text
+read_file/get_text  -> caller requests UTF-8 text semantics
+get_file/get_blob   -> future explicit byte/file-transfer semantics
+```
+
+Consequences:
+
+- JSON containing numbers that represent byte values is still text if the JSON file itself is valid UTF-8; it is not reclassified as binary because its content describes bytes.
+- A nominally binary file whose raw bytes happen to form valid UTF-8 may be returned by a text operation. MIME type/extension are advisory metadata, not a proof of binary-ness.
+- A future arbitrary-file download feature must be a separate tool/resource contract rather than weakening `read_file` into silent base64 fallback.
+- MCP supports image/audio content and binary `BlobResourceContents` encoded as base64, plus `resource_link` references. Base64 adds material transfer overhead, so large binary transfer requires explicit size limits and should prefer a client-supported resource/download path when available.
+- Under the current ChatGPT Secure MCP Tunnel architecture, bytes returned from a local SPARK MCP tool still traverse the OpenAI tunnel path. SPARK therefore must not assume that a local file download is zero-cost or direct merely because the source file is local.
+
+0.0.1 does not add unrestricted binary transfer merely to make every local file downloadable. A future file-transfer capability requires an explicit size/streaming/download design and acceptance test on the actual Brain Host client.
+
 ## 11. Recoverable Delete
 
 Core semantics:
@@ -487,6 +547,9 @@ Architecture-only / deferred:
 | ADR-022 | Container/VM 같은 heavyweight isolation은 default dependency로 도입하지 않으며, practical native enforcement가 없으면 capability를 과장하지 않고 security gap을 명시 |
 | ADR-023 | Current `run_command`의 `X`는 cwd authorization만 의미한다. child process의 filesystem/network confinement은 provider-native PAL 구현이 검증될 때까지 TBD이며, `R`-only 및 unconfigured paths는 ProcessService boundary로 보호된다고 주장하지 않음 |
 | ADR-024 | Cygwin은 Windows File/Permission PAL을 단순화할 수 있는 POSIX/ACL helper 후보로만 연구하며, ProcessService sandbox 또는 filesystem security boundary로 취급하지 않음 |
+| ADR-025 | 0.0.1 intermediate multi-user deployment는 user/device/SPARK instance별 distinct Secure MCP Tunnel + local instance authorization을 사용하고 중앙 SPARK payload relay를 두지 않음 |
+| ADR-026 | 약 5명 규모의 0.0.1에서는 ChatGPT app이 지원하는 경우 per-instance high-entropy bearer/access token 또는 API key를 최소 인증 방식으로 우선 검토하며 OAuth/OIDC는 account lifecycle이 필요할 때 선택적으로 사용 |
+| ADR-027 | text/binary 구분은 heuristic이 아니라 operation contract로 정의한다. `read_file`은 strict UTF-8 text이며 arbitrary binary/file download는 별도 bounded MCP resource/blob/download capability로 설계 |
 
 ## 18. 0.0.0 Verification Status
 
@@ -515,6 +578,10 @@ Project process/verification records are local-only under `_pArc/` (`SWE1.md`, `
 - codex-chatgpt-web: https://github.com/miuuyy/codex-chatgpt-web
 - Cygwin User's Guide / filesystem and ACL behavior: https://cygwin.com/cygwin-ug-net/using.html
 - Cygwin `setfacl`: https://cygwin.com/cygwin-ug-net/setfacl.html
+- OpenAI ChatGPT Developer Mode / MCP Apps: https://help.openai.com/en/articles/12584461-developer-mode-and-mcp-apps-in-chatgpt
+- OpenAI Secure MCP Tunnel client: https://github.com/openai/tunnel-client
+- MCP tool/resource binary content: https://modelcontextprotocol.io/specification/2025-11-25/server/tools
+- Claude Desktop local MCP / Desktop Extensions: https://support.claude.com/en/articles/10949351-getting-started-with-local-mcp-servers-on-claude-desktop
 - Jan: https://github.com/janhq/jan
 
 ## Baseline Handoff
