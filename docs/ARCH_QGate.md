@@ -38,7 +38,7 @@ Ubuntu: success
 Windows: success
 ```
 
-Detailed automated evidence: `../evidence/SPRINT2_TEST_REPORT.md`.
+Detailed automated and live verification history is maintained in local-only `_pArc/SWE3.md`.
 
 ## Findings / Debt
 

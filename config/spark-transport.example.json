@@ -1,8 +1,14 @@
 {
   "daemon": {
     "allowedRoot": [
-      "E:/test",
-      "C:/test"
+      {
+        "path": "E:/SRC/SPARK_Transport",
+        "permissions": "RWX"
+      },
+      {
+        "path": "E:/SRC/00_pArc",
+        "permissions": "R"
+      }
     ],
     "host": "127.0.0.1",
     "port": 8765,

@@ -2,9 +2,10 @@
 setlocal
 cd /d "%~dp0"
 
-if "%~1"=="" goto :usage
+if "%~1"=="" goto :start
 
 if /I "%~1"=="start" goto :start
+if /I "%~1"=="restart" goto :restart
 if /I "%~1"=="status" goto :status
 if /I "%~1"=="stop" goto :stop
 if /I "%~1"=="validate" goto :validate
@@ -17,6 +18,12 @@ goto :usage_error
 
 :start
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\start-all.ps1"
+exit /b %ERRORLEVEL%
+
+:restart
+call "%~f0" stop
+if errorlevel 1 exit /b %ERRORLEVEL%
+call "%~f0" start
 exit /b %ERRORLEVEL%
 
 :status
@@ -32,9 +39,10 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\validate-w
 exit /b %ERRORLEVEL%
 
 :usage
-echo SPARK_Transport start ^| status ^| stop ^| validate
+echo SPARK_Transport [start ^| restart ^| status ^| stop ^| validate]
+echo No argument = start daemon + tunnel + ChatGPT Windows app.
 exit /b 0
 
 :usage_error
-echo SPARK_Transport start ^| status ^| stop ^| validate
+echo SPARK_Transport [start ^| restart ^| status ^| stop ^| validate]
 exit /b 2

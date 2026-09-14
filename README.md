@@ -29,9 +29,9 @@ Future extension points에는 Claude/other Brain Host, custom SPARK UI, Computer
 자세한 구조:
 
 - `docs/ARCH.md`
-- `docs/ARCH_REFERENCE_STUDY.md`
-- `docs/BRAIN_HOST_COMPARISON.md`
-- `docs/SWE1.md`, `docs/SWE2.md`, `docs/SWE3.md`
+- `docs/ARCH_QGate.md`
+
+프로젝트 process 문서 `SWE1.md`, `SWE2.md`, `SWE3.md`, `PIM3.md`는 local-only `_pArc/`에 유지하며 GitHub에는 올리지 않습니다.
 
 ## 2. 0.0.1 Tools
 
@@ -88,13 +88,31 @@ notepad config\spark-transport.local.json
 - `tunnel.id`
 - `tunnel.controlPlaneApiKeyFile`
 
-Windows path는 JSON escaping 문제를 피하기 위해 `/` 표기를 권장합니다.
+Windows path는 JSON escaping 문제를 피하기 위해 `/` 표기를 권장합니다. Windows Explorer에서 복사한 `E:\\SRC\\...` 형태를 JSON에 넣으려면 각 `\\`를 `\\\\`로 escape해야 하므로, 사람이 직접 편집할 때는 `E:/SRC/...`가 가장 안전합니다.
 
-예:
+단일 Root는 기존 문자열 형식도 계속 지원합니다.
 
 ```json
 "allowedRoot": "E:/test"
 ```
+
+Multi-root에서는 문자열 배열 또는 Root별 권한 객체를 사용할 수 있습니다.
+
+```json
+"allowedRoot": [
+  { "path": "E:/SRC/SPARK_Transport", "permissions": "RWX" },
+  { "path": "E:/SRC/00_pArc", "permissions": "R" },
+  { "path": "E:/SRC/SPARK_Theme", "permissions": "RX" }
+]
+```
+
+권한 의미:
+
+- `R`: `list_directory`, `read_file`, copy source
+- `W`: create/write/modify/copy destination/move/delete
+- `X`: `run_command`의 cwd로 사용 가능
+
+문자열 Root는 backward compatibility를 위해 `RWX`로 해석합니다. 상대경로가 둘 이상의 Root에 실제로 존재하면 `AMBIGUOUS_ROOT_PATH`로 실패하며, 이 경우 사용자는 `E:/...` 절대경로로 대상 Root를 명시해야 합니다. `.`은 primary Root(첫 번째 Root)를 의미합니다.
 
 `tunnel.clientDir` 기본값:
 
@@ -131,18 +149,18 @@ notepad .runtime\secrets\control-plane-api-key.txt
 
 ## 6. Lifecycle
 
-Repository root에서:
+Repository root에서 `SPARK_Transport.cmd`를 인자 없이 실행/더블클릭하면 daemon + Secure MCP Tunnel + ChatGPT Windows app을 한 번에 시작합니다.
 
 ```cmd
-SPARK_Transport start
-SPARK_Transport status
-SPARK_Transport stop
-SPARK_Transport validate
+SPARK_Transport.cmd
+SPARK_Transport.cmd start
+SPARK_Transport.cmd restart
+SPARK_Transport.cmd status
+SPARK_Transport.cmd stop
+SPARK_Transport.cmd validate
 ```
 
-`start`는 `[S2-01]`부터 `[S2-09]`까지 순차 step ID를 출력합니다. Config JSON이 잘못되면 `[S2-01] FAIL`로 종료하고, daemon start가 실패하면 `[S2-03]`에서 daemon log tail을 바로 표시합니다.
-
-`status`는 daemon health와 recent operation ledger도 표시합니다.
+`start`는 daemon health와 tunnel readiness를 확인한 뒤 등록된 ChatGPT Windows app을 시작합니다. 이미 실행 중인 구성요소는 재사용합니다. `status`는 daemon, tunnel, ChatGPT process 상태를 각각 표시합니다. `stop`은 tunnel-client, daemon, ChatGPT를 순서대로 종료합니다. `restart`는 stop 후 start를 실행합니다.
 
 ## 7. Delete / Recycle Bin Policy
 
@@ -194,7 +212,7 @@ GitHub Actions release-version verification:
 | Ubuntu / Node 24 | **PASS** |
 | Windows / Node 24 | **PASS** |
 
-Detailed evidence: `evidence/SPRINT2_TEST_REPORT.md`.
+Detailed automated and live verification history is maintained in local-only `_pArc/SWE3.md`.
 
 ## 10. Brain Host Cost Strategy
 
@@ -209,7 +227,7 @@ D. Local model
 
 CatDesk가 제시하는 `3,000 messages/week`는 historical GPT-5.5 Chat allowance이며 current GPT-5.6 guaranteed quota로 사용하지 않습니다. Claude Pro/Max의 official remote MCP path는 future Brain Gateway 후보로 기록했지만 0.0.1에는 구현하지 않았습니다.
 
-자세한 조사: `docs/BRAIN_HOST_COMPARISON.md`.
+자세한 Brain Host 비교와 source-reference study는 `docs/ARCH.md`의 해당 chapter에 통합되어 있습니다.
 
 ## 11. Remaining Deployment Acceptance
 
