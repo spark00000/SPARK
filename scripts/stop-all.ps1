@@ -1,8 +1,8 @@
 param([string]$ConfigPath)
 $ErrorActionPreference='Stop'
 $root=Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path)
-if(-not $ConfigPath){$ConfigPath=Join-Path $root 'config\spark-transport.local.json'}
-$env:SPARK_TRANSPORT_CONFIG=$ConfigPath
+if(-not $ConfigPath){$ConfigPath=Join-Path $root 'config\spark.local.json'}
+$env:SPARK_CONFIG=$ConfigPath
 $runtime=Join-Path $root '.runtime'
 $pidFile=Join-Path $runtime 'tunnel-client.pid'
 
@@ -25,13 +25,13 @@ try{
 Write-Host '[S2-STOP-02] PASS - MCP daemon stopped or already stopped'
 
 Write-Host '[S2-STOP-03] Stopping integrated theme watcher...'
-$themeActivePath=Join-Path $root 'theme\.runtime\active.json'
+$themeActivePath=Join-Path $root 'modules\theme\.runtime\active.json'
 if(Test-Path -LiteralPath $themeActivePath -PathType Leaf){
   try{
     $themeActive=Get-Content -LiteralPath $themeActivePath -Raw | ConvertFrom-Json
     if($themeActive.watcherPid){
       $watcher=Get-CimInstance Win32_Process -Filter "ProcessId=$($themeActive.watcherPid)" -ErrorAction SilentlyContinue
-      if($watcher -and $watcher.CommandLine -and $watcher.CommandLine.IndexOf('theme\src\watch.mjs',[System.StringComparison]::OrdinalIgnoreCase) -ge 0){
+      if($watcher -and $watcher.CommandLine -and $watcher.CommandLine.IndexOf('modules\theme\src\watch.mjs',[System.StringComparison]::OrdinalIgnoreCase) -ge 0){
         Stop-Process -Id $watcher.ProcessId -Force -ErrorAction SilentlyContinue
       }
     }

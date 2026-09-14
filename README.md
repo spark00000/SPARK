@@ -1,6 +1,6 @@
-# SPARK_Transport
+# SPARK
 
-SPARK_Transport는 AI Brain과 사용자의 local/physical capability 사이를 연결하는 **provider-neutral Agent Core**입니다. 현재 0.0.1은 ChatGPT + Secure MCP Tunnel을 Brain path로 사용하고, Windows local filesystem CRUD와 simple command execution을 표준 MCP로 제공합니다.
+SPARK는 AI Brain과 사용자의 local/physical capability 사이를 연결하는 **provider-neutral Agent Core**입니다. 현재 0.0.1은 ChatGPT + Secure MCP Tunnel을 Brain path로 사용하고, Windows local filesystem CRUD와 simple command execution을 표준 MCP로 제공합니다.
 
 현재 baseline은 **version 0.0.1 — CRUD + Simple Execution Small PoC**입니다. Ubuntu/Windows Node 24 GitHub Actions가 모두 PASS했습니다.
 
@@ -25,6 +25,23 @@ ChatGPT Web/App
 ```
 
 Future extension points에는 Claude/other Brain Host, custom SPARK UI, Computer Use, Drone/Robot/Sensor/Actuator Body adapters가 포함됩니다. Claude와 GUI/robot integration은 0.0.1에 구현하지 않았습니다.
+
+Repository는 기능별 sub-project를 `modules/` 아래에 둡니다.
+
+```text
+SPARK/
+├─ modules/
+│  ├─ transport/   # MCP daemon / policy / PAL / tunnel support
+│  ├─ theme/       # ChatGPT Windows CDP theme
+│  └─ oui/         # future Obsidian UI / clipboard integration
+├─ config/         # SPARK-wide runtime configuration
+├─ docs/           # architecture / quality gate
+├─ scripts/        # SPARK-wide lifecycle orchestration
+├─ _pArc/          # local-only process artifacts
+└─ SPARK.cmd       # one-click entry point
+```
+
+새 기능은 독립 lifecycle/config/test 경계가 있으면 `modules/<name>/` sub-project로 추가합니다. Root는 전체 SPARK orchestration과 공통 산출물만 유지합니다.
 
 자세한 구조:
 
@@ -69,17 +86,17 @@ retryable
 error?
 ```
 
-`SPARK_Transport status`는 daemon health와 최근 operation을 함께 표시합니다.
+`SPARK status`는 daemon health와 최근 operation을 함께 표시합니다.
 
-Default runtime/recovery/ledger state는 repository가 아닌 user-private local state directory에 저장됩니다. `SPARK_TRANSPORT_STATE_DIR`로 test/development override가 가능합니다.
+Default runtime/recovery/ledger state는 repository가 아닌 user-private local state directory에 저장됩니다. `SPARK_STATE_DIR`로 test/development override가 가능합니다.
 
 ## 4. Windows config
 
 최초 한 번:
 
 ```cmd
-copy config\spark-transport.example.json config\spark-transport.local.json
-notepad config\spark-transport.local.json
+copy config\spark.example.json config\spark.local.json
+notepad config\spark.local.json
 ```
 
 최소한 다음을 실제 환경에 맞게 수정합니다.
@@ -100,9 +117,8 @@ Multi-root에서는 문자열 배열 또는 Root별 권한 객체를 사용할 �
 
 ```json
 "allowedRoot": [
-  { "path": "E:/SRC/SPARK_Transport", "permissions": "RWX" },
-  { "path": "E:/SRC/00_pArc", "permissions": "R" },
-  { "path": "E:/SRC/SPARK_Theme", "permissions": "RX" }
+  { "path": "E:/SRC/SPARK", "permissions": "RWX" },
+  { "path": "E:/SRC/00_pArc", "permissions": "R" }
 ]
 ```
 
@@ -117,13 +133,13 @@ Multi-root에서는 문자열 배열 또는 Root별 권한 객체를 사용할 �
 `tunnel.clientDir` 기본값:
 
 ```text
-tools/tunnel-client
+modules/transport/tools/tunnel-client
 ```
 
 실제 Windows binary:
 
 ```text
-tools\tunnel-client\tunnel-client.exe
+modules\transport\tools\tunnel-client\tunnel-client.exe
 ```
 
 ## 5. Tunnel key file
@@ -149,15 +165,15 @@ notepad .runtime\secrets\control-plane-api-key.txt
 
 ## 6. Lifecycle
 
-Repository root에서 `SPARK_Transport.cmd`를 인자 없이 실행/더블클릭하면 daemon + Secure MCP Tunnel + ChatGPT Windows app을 한 번에 시작합니다.
+Repository root에서 `SPARK.cmd`를 인자 없이 실행/더블클릭하면 daemon + Secure MCP Tunnel + ChatGPT Windows app을 한 번에 시작합니다.
 
 ```cmd
-SPARK_Transport.cmd
-SPARK_Transport.cmd start
-SPARK_Transport.cmd restart
-SPARK_Transport.cmd status
-SPARK_Transport.cmd stop
-SPARK_Transport.cmd validate
+SPARK.cmd
+SPARK.cmd start
+SPARK.cmd restart
+SPARK.cmd status
+SPARK.cmd stop
+SPARK.cmd validate
 ```
 
 `start`는 daemon health와 tunnel readiness를 확인한 뒤 통합 Theme runtime을 통해 ChatGPT Windows app을 CDP 모드로 시작하고 theme을 적용합니다. 이미 정상 실행 중인 daemon/tunnel/theme 구성요소는 재사용합니다. `status`는 daemon, tunnel, ChatGPT process와 Theme watcher/CDP 상태를 각각 표시합니다. `stop`은 tunnel-client, daemon, Theme watcher, ChatGPT를 순서대로 종료합니다. `restart`는 stop 후 start를 실행합니다.
@@ -171,7 +187,7 @@ SPARK_Transport.cmd validate
 }
 ```
 
-Theme 기능을 사용하지 않으려면 `theme.enabled`를 `false`로 설정합니다. 통합 Theme 구현은 `theme/` 아래에 있으며 `E:/SRC/SPARK_Theme` 원본 프로젝트와 독립적으로 실행됩니다. 원본 Theme 프로젝트는 그대로 유지됩니다.
+Theme 기능을 사용하지 않으려면 `theme.enabled`를 `false`로 설정합니다. Theme 구현은 `modules/theme/` 아래에 포함되며 외부 Theme 프로젝트나 별도 폴더에 의존하지 않습니다.
 
 ## 7. Delete / Recycle Bin Policy
 
@@ -213,7 +229,7 @@ Windows timeout cleanup은 현재 verified tree termination을 사용하며, nat
 
 ```cmd
 npm test
-SPARK_Transport validate
+SPARK.cmd validate
 ```
 
 GitHub Actions release-version verification:

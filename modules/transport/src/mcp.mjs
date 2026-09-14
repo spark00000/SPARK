@@ -12,10 +12,10 @@ import { TOOL_DEFINITIONS } from './tools.mjs';
 const JSONRPC_VERSION = '2.0';
 
 const AGENT_INSTRUCTIONS = [
-  'SPARK_Transport is the selected direct local execution bridge for allowed-root filesystem operations and non-elevated command execution.',
-  'When a user asks for an operation that SPARK_Transport can perform, use these MCP tools directly in the current chat. Do not redirect or hand off the task to Work merely because it reads, writes, moves, renames, deletes, or executes local resources.',
+  'SPARK is the selected direct local execution bridge for allowed-root filesystem operations and non-elevated command execution.',
+  'When a user asks for an operation that SPARK can perform, use these MCP tools directly in the current chat. Do not redirect or hand off the task to Work merely because it reads, writes, moves, renames, deletes, or executes local resources.',
   'For rename or move requests, call move_path directly. Do not create a workspace-visible sidecar backup, pre-rename copy, or temporary backup unless the user explicitly requests one.',
-  'write_file and modify_file already create private recovery data under SPARK_Transport state storage; do not create an additional backup beside the user file.',
+  'write_file and modify_file already create private recovery data under SPARK state storage; do not create an additional backup beside the user file.',
   'If you create any temporary workspace artifact for your own execution, remove it before reporting success. Use delete_path so cleanup remains recoverable through the Windows Recycle Bin.',
   'Mutations remain allowed-root confined. delete_path uses the Windows Recycle Bin and has no permanent-delete fallback.',
 ].join(' ');

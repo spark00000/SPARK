@@ -1,7 +1,7 @@
 .runtime/
-config/spark-transport.local.json
-tools/tunnel-client/*
-!tools/tunnel-client/.gitkeep
+config/spark.local.json
+modules/transport/tools/tunnel-client/*
+!modules/transport/tools/tunnel-client/.gitkeep
 *.log
 .DS_Store
 Thumbs.db

@@ -1,4 +1,4 @@
-# ARCH QGate — SPARK_Transport 0.0.1
+# ARCH QGate — SPARK 0.0.1
 
 **Target:** 0.0.1 CRUD + Simple Execution Small PoC  
 **Review date:** 2026-09-12  

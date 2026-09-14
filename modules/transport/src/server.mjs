@@ -14,7 +14,7 @@ function validateOrigin(req){const host=req.headers.host;if(host&&!isLoopbackHos
 function sendJson(res,status,payload){const body=JSON.stringify(payload);res.writeHead(status,{'content-type':'application/json; charset=utf-8','content-length':Buffer.byteLength(body),'cache-control':'no-store'});res.end(body);}
 async function readJsonBody(req){let size=0;const chunks=[];for await(const chunk of req){size+=chunk.length;if(size>MAX_REQUEST_BYTES){const e=new Error('request too large');e.code='REQUEST_TOO_LARGE';throw e;}chunks.push(chunk);}return JSON.parse(Buffer.concat(chunks).toString('utf8'));}
 
-export async function createSparkTransportServer(config,injections={}){
+export async function createSparkServer(config,injections={}){
   if(!['127.0.0.1','localhost','::1'].includes(config.host))throw new Error('server must bind to a loopback host');
   const policy=await createPathPolicy(config.rootPolicies??config.roots??config.root);
   const {ledger:injectedLedger,runner:injectedRunner,...toolInjections}=injections;
@@ -45,4 +45,4 @@ export async function createSparkTransportServer(config,injections={}){
   return{policy,rawToolRuntime,toolRuntime,ledger,server,async listen(){await new Promise((resolve,reject)=>{server.once('error',reject);server.listen(config.port,config.host,()=>{server.off('error',reject);resolve();});});return server.address();},async close(){if(!server.listening)return;await new Promise((resolve,reject)=>server.close(e=>e?reject(e):resolve()));}};
 }
 
-export async function ensureStateDir(config){await fs.mkdir(config.stateDir,{recursive:true});return{pidFile:path.join(config.stateDir,'spark-transport.pid'),logFile:path.join(config.stateDir,'spark-transport.log')};}
+export async function ensureStateDir(config){await fs.mkdir(config.stateDir,{recursive:true});return{pidFile:path.join(config.stateDir,'spark.pid'),logFile:path.join(config.stateDir,'spark.log')};}

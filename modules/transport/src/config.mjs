@@ -13,7 +13,8 @@ import {
 } from './constants.mjs';
 
 const MODULE_DIR = path.dirname(fileURLToPath(import.meta.url));
-export const PROJECT_ROOT = path.resolve(MODULE_DIR, '..');
+export const MODULE_ROOT = path.resolve(MODULE_DIR, '..');
+export const PROJECT_ROOT = path.resolve(MODULE_DIR, '..', '..', '..');
 const ROOT_PERMISSION_ORDER = Object.freeze(['R', 'W', 'X']);
 
 function positiveInteger(value, fallback, name) {
@@ -35,10 +36,10 @@ function readJsonIfExists(filePath) {
 function defaultPrivateStateDir() {
   if (process.platform === 'win32') {
     const base = process.env.LOCALAPPDATA || process.env.APPDATA || os.homedir();
-    return path.join(base, 'SPARK_Transport');
+    return path.join(base, 'SPARK');
   }
   const base = process.env.XDG_STATE_HOME || path.join(os.homedir(), '.local', 'state');
-  return path.join(base, 'SPARK_Transport');
+  return path.join(base, 'SPARK');
 }
 
 function normalizeRootPermissions(value, index) {
@@ -83,14 +84,14 @@ function normalizeAllowedRoots(value) {
 
 export function loadConfig(overrides = {}) {
   const env = process.env;
-  const configPath = path.resolve(overrides.configPath ?? env.SPARK_TRANSPORT_CONFIG ?? path.join(PROJECT_ROOT, 'config', 'spark-transport.local.json'));
+  const configPath = path.resolve(overrides.configPath ?? env.SPARK_CONFIG ?? path.join(PROJECT_ROOT, 'config', 'spark.local.json'));
   const file = readJsonIfExists(configPath);
   const daemon = file.daemon ?? {};
   const tunnel = file.tunnel ?? {};
 
-  const configuredRoots = overrides.root ?? env.SPARK_TRANSPORT_ROOT ?? daemon.allowedRoot;
+  const configuredRoots = overrides.root ?? env.SPARK_ROOT ?? daemon.allowedRoot;
   if (!configuredRoots || (Array.isArray(configuredRoots) && configuredRoots.length === 0)) {
-    throw new Error('allowed root is required: set daemon.allowedRoot in config or SPARK_TRANSPORT_ROOT');
+    throw new Error('allowed root is required: set daemon.allowedRoot in config or SPARK_ROOT');
   }
   const rootPolicies = normalizeAllowedRoots(configuredRoots);
   const roots = rootPolicies.map((entry) => entry.path);
@@ -100,22 +101,22 @@ export function loadConfig(overrides = {}) {
     root: roots[0],
     roots,
     rootPolicies,
-    host: overrides.host ?? env.SPARK_TRANSPORT_HOST ?? daemon.host ?? DEFAULT_HOST,
-    port: positiveInteger(overrides.port ?? env.SPARK_TRANSPORT_PORT ?? daemon.port, DEFAULT_PORT, 'port'),
-    mcpPath: overrides.mcpPath ?? env.SPARK_TRANSPORT_MCP_PATH ?? daemon.mcpPath ?? DEFAULT_MCP_PATH,
-    healthPath: overrides.healthPath ?? env.SPARK_TRANSPORT_HEALTH_PATH ?? daemon.healthPath ?? DEFAULT_HEALTH_PATH,
-    maxReadBytes: positiveInteger(overrides.maxReadBytes ?? env.SPARK_TRANSPORT_MAX_READ_BYTES ?? daemon.maxReadBytes, DEFAULT_MAX_READ_BYTES, 'maxReadBytes'),
-    commandTimeoutMs: positiveInteger(overrides.commandTimeoutMs ?? env.SPARK_TRANSPORT_COMMAND_TIMEOUT_MS ?? daemon.commandTimeoutMs, DEFAULT_COMMAND_TIMEOUT_MS, 'commandTimeoutMs'),
-    maxCommandOutputBytes: positiveInteger(overrides.maxCommandOutputBytes ?? env.SPARK_TRANSPORT_MAX_COMMAND_OUTPUT_BYTES ?? daemon.maxCommandOutputBytes, DEFAULT_MAX_COMMAND_OUTPUT_BYTES, 'maxCommandOutputBytes'),
-    stateDir: path.resolve(overrides.stateDir ?? env.SPARK_TRANSPORT_STATE_DIR ?? daemon.stateDir ?? defaultPrivateStateDir()),
+    host: overrides.host ?? env.SPARK_HOST ?? daemon.host ?? DEFAULT_HOST,
+    port: positiveInteger(overrides.port ?? env.SPARK_PORT ?? daemon.port, DEFAULT_PORT, 'port'),
+    mcpPath: overrides.mcpPath ?? env.SPARK_MCP_PATH ?? daemon.mcpPath ?? DEFAULT_MCP_PATH,
+    healthPath: overrides.healthPath ?? env.SPARK_HEALTH_PATH ?? daemon.healthPath ?? DEFAULT_HEALTH_PATH,
+    maxReadBytes: positiveInteger(overrides.maxReadBytes ?? env.SPARK_MAX_READ_BYTES ?? daemon.maxReadBytes, DEFAULT_MAX_READ_BYTES, 'maxReadBytes'),
+    commandTimeoutMs: positiveInteger(overrides.commandTimeoutMs ?? env.SPARK_COMMAND_TIMEOUT_MS ?? daemon.commandTimeoutMs, DEFAULT_COMMAND_TIMEOUT_MS, 'commandTimeoutMs'),
+    maxCommandOutputBytes: positiveInteger(overrides.maxCommandOutputBytes ?? env.SPARK_MAX_COMMAND_OUTPUT_BYTES ?? daemon.maxCommandOutputBytes, DEFAULT_MAX_COMMAND_OUTPUT_BYTES, 'maxCommandOutputBytes'),
+    stateDir: path.resolve(overrides.stateDir ?? env.SPARK_STATE_DIR ?? daemon.stateDir ?? defaultPrivateStateDir()),
     recycleBin: daemon.recycleBin !== false,
     tunnel: {
       enabled: tunnel.enabled !== false,
-      id: env.SPARK_TRANSPORT_TUNNEL_ID ?? tunnel.id ?? '',
-      profile: tunnel.profile ?? 'spark-transport',
+      id: env.SPARK_TUNNEL_ID ?? tunnel.id ?? '',
+      profile: tunnel.profile ?? 'spark',
       localMcpUrl: tunnel.localMcpUrl ?? `http://127.0.0.1:${positiveInteger(daemon.port, DEFAULT_PORT, 'port')}${daemon.mcpPath ?? DEFAULT_MCP_PATH}`,
       clientVersion: tunnel.clientVersion ?? 'v0.0.14',
-      clientDir: path.resolve(tunnel.clientDir ?? path.join(PROJECT_ROOT, 'tools', 'tunnel-client')),
+      clientDir: path.resolve(tunnel.clientDir ?? path.join(PROJECT_ROOT, 'modules', 'transport', 'tools', 'tunnel-client')),
     },
   };
 }

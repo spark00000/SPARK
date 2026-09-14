@@ -2,7 +2,7 @@
   "daemon": {
     "allowedRoot": [
       {
-        "path": "E:/SRC/SPARK_Transport",
+        "path": "E:/SRC/SPARK",
         "permissions": "RWX"
       },
       {
@@ -26,10 +26,10 @@
   "tunnel": {
     "enabled": true,
     "id": "tunnel_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
-    "profile": "spark-transport",
+    "profile": "spark",
     "localMcpUrl": "http://127.0.0.1:8765/mcp",
     "clientVersion": "v0.0.14",
-    "clientDir": "tools/tunnel-client",
+    "clientDir": "modules/transport/tools/tunnel-client",
     "controlPlaneApiKeyFile": ".runtime/secrets/control-plane-api-key.txt"
   }
 }

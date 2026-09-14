@@ -1,17 +1,17 @@
 {
-  "name": "spark-transport",
+  "name": "spark",
   "version": "0.0.1",
   "private": true,
-  "description": "SPARK_Transport MCP Agent Core - CRUD and simple execution Small PoC",
+  "description": "SPARK local agent runtime with transport, theme, and future UI modules.",
   "type": "module",
   "engines": { "node": ">=20" },
   "scripts": {
-    "start": "node src/cli.mjs serve",
-    "daemon:start": "node src/cli.mjs start",
-    "daemon:status": "node src/cli.mjs status",
-    "daemon:stop": "node src/cli.mjs stop",
-    "test": "node --test --test-concurrency=1 tests/*.test.mjs theme/test/*.test.mjs",
-    "test:protocol": "node --test --test-concurrency=1 tests/mcp-http.test.mjs",
-    "theme:validate": "node theme/src/cli.mjs validate --theme theme/config/dark-red-theme.json"
+    "start": "node modules/transport/src/cli.mjs serve",
+    "daemon:start": "node modules/transport/src/cli.mjs start",
+    "daemon:status": "node modules/transport/src/cli.mjs status",
+    "daemon:stop": "node modules/transport/src/cli.mjs stop",
+    "test": "node --test --test-concurrency=1 modules/transport/test/*.test.mjs modules/theme/test/*.test.mjs",
+    "test:protocol": "node --test --test-concurrency=1 modules/transport/test/mcp-http.test.mjs",
+    "theme:validate": "node modules/theme/src/cli.mjs validate --theme modules/theme/config/dark-red-theme.json"
   }
 }

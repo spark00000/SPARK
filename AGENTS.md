@@ -1,8 +1,8 @@
-# AGENTS.md — SPARK_Transport 개발 방법론
+# AGENTS.md — SPARK 개발 방법론
 
 **Version:** 0.0.0
 
-이 문서는 SPARK_Transport에서 Agent와 사람이 동일한 방식으로 작업하기 위한 개발 규칙입니다. 프로젝트별 요구사항은 `docs/SWE1.md`, 설계 과정은 `docs/SWE2.md`, 안정된 Architecture Contract는 `docs/ARCH.md`, 미완료 구현은 `docs/SWE3.md`가 소유합니다.
+이 문서는 SPARK에서 Agent와 사람이 동일한 방식으로 작업하기 위한 개발 규칙입니다. 프로젝트별 요구사항은 `docs/SWE1.md`, 설계 과정은 `docs/SWE2.md`, 안정된 Architecture Contract는 `docs/ARCH.md`, 미완료 구현은 `docs/SWE3.md`가 소유합니다.
 
 ## 1. 기본 원칙
 
@@ -28,7 +28,7 @@ Sprint-1은 read-only입니다. write/delete/exec 같은 위험 기능은 해당
 
 ### P6. 표준 우선
 
-SPARK_Transport는 MCP 표준을 확장하지 않습니다. 기능은 표준 MCP tool/resource/schema 안에서 표현합니다.
+SPARK는 MCP 표준을 확장하지 않습니다. 기능은 표준 MCP tool/resource/schema 안에서 표현합니다.
 
 ### P7. 검증되지 않은 완료 선언 금지
 
@@ -44,10 +44,12 @@ source가 존재한다는 이유만으로 완료라고 하지 않습니다. 실�
 | `docs/ARCH.md` | 구현 Agent가 따라야 할 안정된 Architecture Contract |
 | `docs/ARCH_QGate.md` | Architecture review evidence |
 | `docs/SWE3.md` | TODO/FAILED/RETRY/DEFERRED/BLOCKED backlog |
-| `src/` | 제품 source |
-| `tests/` | 자동 verification |
+| `modules/transport/` | MCP daemon / policy / PAL / tunnel 지원 sub-project |
+| `modules/theme/` | ChatGPT Windows CDP Theme sub-project |
+| `modules/oui/` | 향후 Obsidian UI / clipboard integration sub-project |
+| `scripts/` | 전체 SPARK lifecycle orchestration |
+| `config/` | 전체 SPARK runtime configuration |
 | `evidence/` | test/build/integration evidence |
-| `refs/` | 외부 표준/공식 문서 reference |
 
 Project-specific requirement를 `AGENTS.md`에 넣지 않습니다.
 
@@ -61,7 +63,7 @@ Project-specific requirement를 `AGENTS.md`에 넣지 않습니다.
 6. Architecture에 영향을 주는 변경은 `SWE2.md`에서 결정 후 `ARCH.md`에 반영합니다.
 7. 완료 시 evidence를 남기고 baseline을 갱신합니다.
 
-## 4. SPARK_Transport 고정 제약
+## 4. SPARK 고정 제약
 
 프로젝트별 상세 requirement는 `docs/SWE1.md`가 authoritative source입니다. 다음은 구현 Agent가 항상 지켜야 할 핵심 경계입니다.
 

@@ -1,4 +1,4 @@
-# ARCH — SPARK_Transport
+# ARCH — SPARK
 
 **Version:** 0.0.1  
 **Status:** Accepted Small PoC Architecture Baseline  
@@ -6,7 +6,7 @@
 
 ## 1. Purpose and Product Boundary
 
-SPARK_Transport는 특정 AI UI나 특정 model에 종속된 coding agent가 아니라 **AI Brain과 local/physical capability 사이의 provider-neutral Agent Core**를 제공한다.
+SPARK는 특정 AI UI나 특정 model에 종속된 coding agent가 아니라 **AI Brain과 local/physical capability 사이의 provider-neutral Agent Core**를 제공한다.
 
 현재 first Brain Host는 ChatGPT Web/App이고 OpenAI Secure MCP Tunnel을 통해 연결한다. ChatGPT subscription message를 사용해 별도 model API 비용을 피하는 방식은 중요한 current deployment strategy이지만 Agent Core의 dependency가 아니다.
 
@@ -304,7 +304,7 @@ errorCode
 summary
 ```
 
-`SPARK_Transport status`는 recent operations를 health와 함께 표시한다.
+`SPARK status`는 recent operations를 health와 함께 표시한다.
 
 Default runtime/recovery/ledger state는 repository/workspace가 아니라 user-private local state directory를 사용한다. Test/development는 explicit `stateDir` override를 허용한다.
 
@@ -399,12 +399,12 @@ Project process/verification records are local-only under `_pArc/` (`SWE1.md`, `
 ## 20. Architecture Reference Study
 
 **Date:** 2026-09-12  
-**Purpose:** SPARK_Transport Sprint-2 architecture 재정립을 위한 source-level comparison  
+**Purpose:** SPARK Sprint-2 architecture 재정립을 위한 source-level comparison
 **Scope:** CatDesk, Local Coding Agent, ChatGPT Local Coder, Jan
 
 ## 1. Executive Conclusion
 
-세 coding-agent 프로젝트는 SPARK_Transport가 다시 구현할 필요가 없는 문제를 이미 상당 부분 다루고 있다. 그러나 어느 하나도 SPARK의 target architecture를 그대로 제공하지는 않는다.
+세 coding-agent 프로젝트는 SPARK가 다시 구현할 필요가 없는 문제를 이미 상당 부분 다루고 있다. 그러나 어느 하나도 SPARK의 target architecture를 그대로 제공하지는 않는다.
 
 가장 유용한 조합은 다음과 같다.
 
@@ -422,7 +422,7 @@ Jan
   -> future client/UI / MCP host / provider-neutral and local-model architecture
 ```
 
-SPARK_Transport는 이 요소를 **Client/Transport/Core/Policy/PAL**로 분리하여 조합한다.
+SPARK는 이 요소를 **Client/Transport/Core/Policy/PAL**로 분리하여 조합한다.
 
 ## 2. Reproducible Source Snapshots
 
@@ -700,15 +700,15 @@ Jan의 local server는 기본적으로 localhost에서 OpenAI-compatible REST AP
 A. ChatGPT Web/App
    -> consumer message/subscription
    -> Secure MCP Tunnel
-   -> SPARK_Transport
+   -> SPARK
 
 B. SPARK/Jan-like local UI
    -> local model or configured provider
    -> local transport/MCP
-   -> SPARK_Transport
+   -> SPARK
 ```
 
-B에서 frontier cloud model을 직접 쓰려면 일반적으로 provider API/auth가 필요하다. 현재 architecture는 이 provider 선택을 SPARK_Transport core 밖에 둔다.
+B에서 frontier cloud model을 직접 쓰려면 일반적으로 provider API/auth가 필요하다. 현재 architecture는 이 provider 선택을 SPARK core 밖에 둔다.
 
 ## 8. SPARK Architecture Decision after Study
 
@@ -983,12 +983,12 @@ PAL transparency is therefore part of the current verified baseline rather than 
 
 ## 23. Integrated ChatGPT Theme Runtime
 
-SPARK_Transport includes the working CDP-based ChatGPT Theme component under `theme/` while keeping the original `E:/SRC/SPARK_Theme` project independent and unchanged.
+SPARK는 CDP 기반 ChatGPT Theme 기능을 `modules/theme/` sub-project로 직접 포함한다. Theme runtime은 외부 Theme repository나 별도 local project에 의존하지 않는다.
 
 Runtime flow:
 
 ```text
-SPARK_Transport.cmd
+SPARK.cmd
   -> MCP daemon
   -> Secure MCP Tunnel
   -> integrated theme launcher
@@ -999,4 +999,4 @@ SPARK_Transport.cmd
 
 The Theme component is not an MCP tool and does not change the 10-tool MCP contract. It belongs to the Client / UX Plane and Windows runtime integration. `theme.enabled=false` falls back to the normal ChatGPT Windows app launch path. `status` reports Theme watcher/CDP health separately, and `stop` terminates the Theme watcher before stopping ChatGPT.
 
-The copied Theme source retains its MIT license under `theme/LICENSE`. Theme runtime state is stored under `theme/.runtime/` and remains ignored by Git.
+Theme module은 원래 MIT license를 `modules/theme/LICENSE`에 유지한다. Theme runtime state는 `modules/theme/.runtime/`에 저장하며 Git에서 제외한다.

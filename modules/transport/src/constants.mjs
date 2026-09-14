@@ -1,4 +1,4 @@
-export const APP_NAME = 'SPARK_Transport';
+export const APP_NAME = 'SPARK';
 export const APP_VERSION = '0.0.1';
 export const MCP_PROTOCOL_VERSION = '2026-07-28';
 export const DEFAULT_HOST = '127.0.0.1';

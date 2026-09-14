@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import path from 'node:path';
 import test from 'node:test';
-import { createSparkTransportServer } from '../src/server.mjs';
+import { createSparkServer } from '../src/server.mjs';
 import { freePort, headersFor, makeFixture, requestEnvelope } from './helpers.mjs';
 
 test('server discover/list/call smoke exposes Sprint-2 tool set',async(t)=>{
@@ -9,7 +9,7 @@ test('server discover/list/call smoke exposes Sprint-2 tool set',async(t)=>{
   t.after(f.cleanup);
   const port=await freePort();
   const config={root:f.root,host:'127.0.0.1',port,mcpPath:'/mcp',healthPath:'/health',maxReadBytes:1024*1024,commandTimeoutMs:1000,maxCommandOutputBytes:4096,stateDir:path.join(f.base,'state'),recycleBin:true};
-  const runtime=await createSparkTransportServer(config,{recycle:async()=>{},runner:async()=>({ok:true,stdout:'',stderr:'',exitCode:0,durationMs:1})});
+  const runtime=await createSparkServer(config,{recycle:async()=>{},runner:async()=>({ok:true,stdout:'',stderr:'',exitCode:0,durationMs:1})});
   await runtime.listen();
   t.after(()=>runtime.close());
   for(const body of [requestEnvelope('server/discover'),requestEnvelope('tools/list')]){
@@ -17,6 +17,7 @@ test('server discover/list/call smoke exposes Sprint-2 tool set',async(t)=>{
     assert.equal(res.status,200);
     const json=await res.json();
     assert.equal(json.result.resultType,'complete');
+    assert.equal(json.result._meta['io.modelcontextprotocol/serverInfo'].name,'SPARK');
     if(body.method==='tools/list')assert.equal(json.result.tools.length,10);
   }
   const call=requestEnvelope('tools/call',{name:'read_file',arguments:{path:'hello.txt'}});
@@ -39,7 +40,7 @@ test('modern header mismatch rejected and GET SSE absent',async(t)=>{
   t.after(f.cleanup);
   const port=await freePort();
   const config={root:f.root,host:'127.0.0.1',port,mcpPath:'/mcp',healthPath:'/health',maxReadBytes:1024,stateDir:path.join(f.base,'state'),commandTimeoutMs:1000,maxCommandOutputBytes:4096,recycleBin:true};
-  const rt=await createSparkTransportServer(config);
+  const rt=await createSparkServer(config);
   await rt.listen();
   t.after(()=>rt.close());
   const body=requestEnvelope('tools/list');
