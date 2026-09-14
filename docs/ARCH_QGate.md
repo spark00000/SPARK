@@ -32,6 +32,7 @@
 | Integrated ChatGPT UI launcher validate | PASS |
 | ChatGPT mutation/exec live E2E after local 0.0.0 deployment | PASS — 2026-09-14 live MCP acceptance |
 | Transport + Tunnel + ChatGPT UI `SPARK start` live E2E | PASS — 2026-09-14 integrated runtime acceptance |
+| ProcessService filesystem/network confinement outside FileService roots | **TBD / KNOWN GAP** — current `X` gates cwd only; child process authority is ambient OS-user authority |
 | Independent Architecture Peer | PENDING — process gate |
 
 ## Evidence
@@ -52,13 +53,13 @@ Exact run IDs, merge SHA, tag and live runtime acceptance are maintained in loca
 ## Findings / Debt
 
 - **DEBT-001:** Windows process ownership is verified through timeout tree termination for the private-use baseline; native Windows Job Object remains the preferred stronger production backend.
-- **DEBT-002:** `run_command` cwd containment is not an OS filesystem/network sandbox. Distribution-grade containment remains future work.
+- **DEBT-002 / TBD:** `run_command` cwd containment is not an OS filesystem/network sandbox. If any root grants `X`, the launched process may read/write/delete `R`-only or unconfigured paths wherever the ambient OS user is permitted; FileService R/W and Recycle Bin-only semantics do not constrain arbitrary child I/O. SPARK will not add a parallel command parser or default heavyweight container/VM to mask this gap. ProcessService filesystem/network confinement remains TBD until a simple provider-native PAL mechanism is selected and verified.
 - **DEPLOY-001:** ChatGPT mutation/exec live MCP E2E는 2026-09-14에 최신 Transport service/tunnel 기준으로 완료했습니다.
 - **DEPLOY-002:** 통합된 Transport + Tunnel + ChatGPT UI `SPARK start` 경로의 최종 사용자 runtime acceptance를 2026-09-14에 완료했습니다.
 - **PROCESS-001:** Independent Architecture Peer review has not been executed in this authoring context.
 
 ## Gate Conclusion
 
-**0.0.0 source/implementation/live private-use baseline gate: PASS.**
+**0.0.0 source/implementation/live private-use baseline gate: PASS for the declared private-use scope.**
 
-Independent Architecture Peer review remains a separate process gate and is not silently treated as completed.
+This PASS does **not** certify ProcessService filesystem/network confinement: that capability is explicitly **TBD / KNOWN GAP** and is not part of the 0.0.0 security guarantee. Independent Architecture Peer review remains a separate process gate and is not silently treated as completed.
