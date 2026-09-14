@@ -61,6 +61,12 @@ test('Windows one-click lifecycle scripts preserve start/restart/status/stop con
   assert.match(start, /Get-Process -Name 'ChatGPT'/);
   assert.match(start, /\.StartsWith\('\[S2-07\]'\)/);
   assert.doesNotMatch(start, /-like\s+'\[S2-07\]\*'/i);
+  assert.match(start, /\$readyTimeoutSeconds=60/);
+  assert.match(start, /health\?details=true/);
+  assert.match(start, /health\/mcp/);
+  assert.match(start, /health\/control-plane/);
+  assert.doesNotMatch(start, /did not become ready within 20 seconds/i);
+  assert.match(start, /remains running as PID/);
   assert.match(status, /Get-Process -Name 'ChatGPT'/);
   assert.match(stop, /\$tunnelPid\s*=/);
   assert.doesNotMatch(stop, /\$pid\s*=/i);
