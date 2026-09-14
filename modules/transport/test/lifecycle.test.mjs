@@ -60,6 +60,9 @@ test('Windows one-click lifecycle scripts preserve start/restart/status/stop con
   assert.match(cmd, /if "%~1"=="" goto :start/i);
   assert.match(cmd, /if \/I "%~1"=="restart" goto :restart/i);
   assert.match(start, /Get-StartApps/);
+  assert.match(start, /modules\\transport\\config\\spark\.local\.json/);
+  assert.match(start, /\.runtime\\config\\spark\.local\.json/);
+  assert.match(start, /Test-Path -LiteralPath \$moduleConfig -PathType Leaf/);
   assert.match(start, /Get-Process -Name 'ChatGPT'/);
   assert.match(start, /\.StartsWith\('\[S2-07\]'\)/);
   assert.doesNotMatch(start, /-like\s+'\[S2-07\]\*'/i);

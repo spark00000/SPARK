@@ -1,8 +1,8 @@
-# SPARK
+# SPARK — Symbiotic Personal AI Robotic Keeper
 
-SPARK는 AI Brain과 사용자의 local/physical capability 사이를 연결하는 **provider-neutral Agent Core**입니다. 현재 0.0.1은 ChatGPT + Secure MCP Tunnel을 Brain path로 사용하고, Windows local filesystem CRUD와 simple command execution을 표준 MCP로 제공합니다.
+SPARK는 **Symbiotic Personal AI Robotic Keeper**의 약자이며, AI Brain과 사용자의 local/physical capability 사이를 연결하는 provider-neutral Agent Core입니다. 현재 0.0.0 private-use baseline은 ChatGPT + Secure MCP Tunnel을 Brain path로 사용하고, Windows local filesystem CRUD와 simple command execution을 표준 MCP로 제공합니다.
 
-현재 baseline은 **version 0.0.1 — CRUD + Simple Execution Small PoC**입니다. Ubuntu/Windows Node 24 GitHub Actions가 모두 PASS했습니다.
+현재 baseline은 **version 0.0.0 — Private Usage Baseline**입니다. 다음 0.0.1부터 multi-user usage와 deployment hardening을 진행합니다.
 
 ## 1. Architecture
 
@@ -24,17 +24,21 @@ ChatGPT Web/App
   -> Windows Filesystem / Process / Recycle Bin
 ```
 
-Future extension points에는 Claude/other Brain Host, custom SPARK UI, Computer Use, Drone/Robot/Sensor/Actuator Body adapters가 포함됩니다. Claude와 GUI/robot integration은 0.0.1에 구현하지 않았습니다.
+Future extension points에는 Claude/other Brain Host, custom SPARK UI, Computer Use, Drone/Robot/Sensor/Actuator Body adapters가 포함됩니다. Claude와 GUI/robot integration은 0.0.0에 구현하지 않았습니다.
 
 Repository는 기능별 sub-project를 `modules/` 아래에 둡니다.
 
 ```text
 SPARK/
 ├─ modules/
-│  ├─ transport/   # MCP daemon / policy / PAL / tunnel support
+│  ├─ transport/
+│  │  ├─ config/   # Transport config template / optional local override
+│  │  ├─ src/
+│  │  ├─ test/
+│  │  └─ tools/
 │  ├─ theme/       # ChatGPT Windows CDP theme
 │  └─ oui/         # future Obsidian UI / clipboard integration
-├─ config/         # SPARK-wide runtime configuration
+├─ .runtime/       # local-only config / secrets / runtime state
 ├─ docs/           # architecture / quality gate
 ├─ scripts/        # SPARK-wide lifecycle orchestration
 ├─ _pArc/          # local-only process artifacts
@@ -50,7 +54,7 @@ SPARK/
 
 프로젝트 process 문서 `SWE1.md`, `SWE2.md`, `SWE3.md`, `PIM3.md`는 local-only `_pArc/`에 유지하며 GitHub에는 올리지 않습니다.
 
-## 2. 0.0.1 Tools
+## 2. 0.0.0 Tools
 
 MCP baseline은 `2026-07-28`이며 SPARK 전용 protocol extension은 만들지 않습니다.
 
@@ -92,12 +96,22 @@ Default runtime/recovery/ledger state는 repository가 아닌 user-private local
 
 ## 4. Windows config
 
-최초 한 번:
+배포/개인 사용에서는 private config를 `.runtime/config/`에 둡니다.
 
 ```cmd
-copy config\spark.example.json config\spark.local.json
-notepad config\spark.local.json
+mkdir .runtime\config 2>NUL
+copy modules\transport\config\spark.example.json .runtime\config\spark.local.json
+notepad .runtime\config\spark.local.json
 ```
+
+Config 탐색 순서는 다음과 같습니다.
+
+1. launcher의 `-ConfigPath`처럼 명시적으로 지정한 경로
+2. 실제 파일이 존재하는 `SPARK_CONFIG`
+3. `modules/transport/config/spark.local.json` — 개발/Transport-local override
+4. `.runtime/config/spark.local.json` — 기본 private runtime fallback
+
+`modules/transport/config/spark.local.json`과 `.runtime/` 전체는 Git에 포함되지 않습니다. tracked config는 `modules/transport/config/spark.example.json` 하나만 유지합니다.
 
 최소한 다음을 실제 환경에 맞게 수정합니다.
 
@@ -105,7 +119,7 @@ notepad config\spark.local.json
 - `tunnel.id`
 - `tunnel.controlPlaneApiKeyFile`
 
-Windows path는 JSON escaping 문제를 피하기 위해 `/` 표기를 권장합니다. Windows Explorer에서 복사한 `E:\\SRC\\...` 형태를 JSON에 넣으려면 각 `\\`를 `\\\\`로 escape해야 하므로, 사람이 직접 편집할 때는 `E:/SRC/...`가 가장 안전합니다.
+Windows path는 JSON escaping 문제를 피하기 위해 `/` 표기를 권장합니다. Windows Explorer에서 복사한 `C:\\SPARK\\...` 형태를 JSON에 넣으려면 각 `\\`를 `\\\\`로 escape해야 하므로, 사람이 직접 편집할 때는 `C:/SPARK/...`가 가장 안전합니다.
 
 단일 Root는 기존 문자열 형식도 계속 지원합니다.
 
@@ -117,8 +131,8 @@ Multi-root에서는 문자열 배열 또는 Root별 권한 객체를 사용할 �
 
 ```json
 "allowedRoot": [
-  { "path": "E:/SRC/SPARK", "permissions": "RWX" },
-  { "path": "E:/SRC/00_pArc", "permissions": "R" }
+  { "path": "C:/SPARK/workspace", "permissions": "RWX" },
+  { "path": "C:/SPARK/reference", "permissions": "R" }
 ]
 ```
 
@@ -144,7 +158,7 @@ modules\transport\tools\tunnel-client\tunnel-client.exe
 
 ## 5. Tunnel key file
 
-0.0.1에서는 tunnel Runtime API key를 **파일 하나로 고정**해서 읽습니다. Environment variable이나 `env:` / `file:` prefix를 config에 쓰지 않습니다.
+0.0.0에서는 tunnel Runtime API key를 **파일 하나로 고정**해서 읽습니다. Environment variable이나 `env:` / `file:` prefix를 config에 쓰지 않습니다.
 
 기본 config:
 
@@ -209,7 +223,7 @@ Windows CI에서 actual Recycle Bin source-removal test를 통과했습니다.
 {"command":"cmd.exe","args":["/c","dir"],"cwd":".","timeoutMs":10000}
 ```
 
-0.0.1 behavior:
+0.0.0 behavior:
 
 - explicit executable + argv
 - `shell:false` by default
@@ -252,10 +266,40 @@ C. Pay-as-you-go API/usage credit
 D. Local model
 ```
 
-CatDesk가 제시하는 `3,000 messages/week`는 historical GPT-5.5 Chat allowance이며 current GPT-5.6 guaranteed quota로 사용하지 않습니다. Claude Pro/Max의 official remote MCP path는 future Brain Gateway 후보로 기록했지만 0.0.1에는 구현하지 않았습니다.
+CatDesk가 제시하는 `3,000 messages/week`는 historical GPT-5.5 Chat allowance이며 current GPT-5.6 guaranteed quota로 사용하지 않습니다. Claude Pro/Max의 official remote MCP path는 future Brain Gateway 후보로 기록했지만 0.0.0에는 구현하지 않았습니다.
 
 자세한 Brain Host 비교와 source-reference study는 `docs/ARCH.md`의 해당 chapter에 통합되어 있습니다.
 
-## 11. Remaining Deployment Acceptance
+## 11. ChatGPT custom MCP app 등록 / SPARK 이름 적용
 
-GitHub source/automated 0.0.1 gate는 PASS입니다. Local PC에서 최신 main을 pull/restart한 뒤 ChatGPT에서 mutation + `run_command` live E2E를 수행합니다.
+ChatGPT에 등록된 custom MCP app의 표시명은 MCP `serverInfo.name`만 변경한다고 자동으로 바뀌지 않습니다. SPARK daemon은 `serverInfo.name=SPARK`를 광고하지만 ChatGPT 쪽 앱 이름은 별도의 등록 metadata입니다.
+
+현재 OpenAI 공식 절차 기준:
+
+1. ChatGPT에서 developer mode를 활성화합니다.
+   - Business: 관리자/소유자가 Workspace settings → Apps → Create에서 developer mode를 사용할 수 있습니다.
+   - Enterprise/Edu: Settings → Apps → Advanced Settings에서 developer mode를 활성화할 수 있습니다.
+2. 기존 앱이 아직 Dev/draft 상태이고 `Manage`에서 이름 수정이 가능하면 앱 이름을 `SPARK`로 변경합니다.
+3. 이름 수정이 불가능하거나 Business에서 이미 publish된 앱이면 새 custom app을 만듭니다.
+   - 이름: `SPARK`
+   - Endpoint: 현재 Secure MCP Tunnel이 제공하는 MCP endpoint
+   - Authentication: 현재 tunnel/profile 설정과 동일한 방식
+   - `Scan Tools` 실행
+   - 정확히 10개 SPARK tool이 보이는지 확인
+   - Create 후 read/write/run_command smoke test
+4. 새 `SPARK` 앱이 정상 동작하는 것을 확인한 뒤 기존 이름으로 등록된 앱을 제거합니다. 기존 앱부터 먼저 삭제하지 않는 것이 안전합니다.
+5. MCP tool/schema가 변경되면 ChatGPT 앱 설정에서 Refresh/Scan Tools를 다시 수행합니다.
+
+공식 참고: `https://help.openai.com/en/articles/12584461`
+
+로컬 MCP server는 ChatGPT가 직접 접속할 수 없으므로 현재 구조처럼 Secure MCP Tunnel을 사용합니다.
+
+## 12. Baseline
+
+- `0.0.0`: 현재까지 검증된 **private-use baseline**
+- `0.0.1`: 다음 단계인 **multi-user usage / deployment**
+- `0.0.0` tracked source에는 사용자 개인 absolute path, 실제 tunnel ID/API key, local runtime state를 포함하지 않습니다.
+
+## 13. Remaining Deployment Acceptance
+
+Source/automated `0.0.0` gate와 이전 live mutation/exec E2E는 PASS입니다. 이 baseline source를 실제 daemon이 다시 읽도록 `SPARK.cmd restart`한 뒤, daemon version `0.0.0`, tunnel ready, Theme active, ChatGPT custom app 이름 `SPARK`를 최종 확인합니다.

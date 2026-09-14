@@ -1,6 +1,10 @@
 param([string]$ConfigPath)
 $root=Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path)
-if(-not $ConfigPath){$ConfigPath=Join-Path $root 'config\spark.local.json'}
+if(-not $ConfigPath){
+  $moduleConfig=Join-Path $root 'modules\transport\config\spark.local.json'
+  $runtimeConfig=Join-Path $root '.runtime\config\spark.local.json'
+  if(Test-Path -LiteralPath $moduleConfig -PathType Leaf){$ConfigPath=$moduleConfig}else{$ConfigPath=$runtimeConfig}
+}
 $env:SPARK_CONFIG=$ConfigPath
 
 Write-Host '[S2-STATUS-01] MCP daemon'

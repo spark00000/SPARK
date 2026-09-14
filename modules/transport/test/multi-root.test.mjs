@@ -2,10 +2,31 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import test from 'node:test';
-import { loadConfig } from '../src/config.mjs';
+import { loadConfig, resolveConfigPath } from '../src/config.mjs';
 import { createPathPolicy } from '../src/path-policy.mjs';
 import { createToolRuntime } from '../src/tools.mjs';
 import { makeFixture } from './helpers.mjs';
+
+test('config resolution prefers explicit path, then transport-local, then runtime fallback', async (t) => {
+  const f = await makeFixture();
+  t.after(f.cleanup);
+  const modulePath = path.join(f.base, 'module-config.json');
+  const runtimePath = path.join(f.base, 'runtime-config.json');
+  const explicitPath = path.join(f.base, 'explicit-config.json');
+
+  await fs.writeFile(runtimePath, '{}', 'utf8');
+  assert.equal(resolveConfigPath({ modulePath, runtimePath }), path.resolve(runtimePath));
+
+  await fs.writeFile(modulePath, '{}', 'utf8');
+  assert.equal(resolveConfigPath({ modulePath, runtimePath }), path.resolve(modulePath));
+
+  const staleEnvPath = path.join(f.base, 'missing-env-config.json');
+  assert.equal(resolveConfigPath({ envPath: staleEnvPath, modulePath, runtimePath }), path.resolve(modulePath));
+
+  assert.equal(resolveConfigPath({ override: explicitPath, modulePath, runtimePath }), path.resolve(explicitPath));
+  await fs.writeFile(explicitPath, '{}', 'utf8');
+  assert.equal(resolveConfigPath({ envPath: explicitPath, modulePath, runtimePath }), path.resolve(explicitPath));
+});
 
 test('allowedRoot accepts an array while preserving first-root relative paths', async (t) => {
   const f = await makeFixture();
