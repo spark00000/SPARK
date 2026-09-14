@@ -27,6 +27,29 @@ function Start-ChatGPTApp(){
   Fail-Step 'S2-10' 'ChatGPT launch was requested but no ChatGPT process appeared within 10 seconds'
 }
 
+function Show-TunnelHealthDiagnostics(){
+  Write-Host '[S2-09] ---- tunnel health diagnostics ----'
+  $uris=@(
+    'http://127.0.0.1:8080/healthz',
+    'http://127.0.0.1:8080/readyz',
+    'http://127.0.0.1:8080/health?details=true',
+    'http://127.0.0.1:8080/health/mcp',
+    'http://127.0.0.1:8080/health/control-plane'
+  )
+  foreach($uri in $uris){
+    try{
+      $response=Invoke-WebRequest -UseBasicParsing -TimeoutSec 3 $uri
+      Write-Host "[S2-09] $uri -> HTTP $($response.StatusCode)"
+      if($response.Content){Write-Host $response.Content.Trim()}
+    }catch{
+      $status='request-failed'
+      try{if($_.Exception.Response){$status='HTTP '+[int]$_.Exception.Response.StatusCode}}catch{}
+      Write-Host "[S2-09] $uri -> $status : $($_.Exception.Message)"
+    }
+  }
+  Write-Host '[S2-09] ---- end tunnel health diagnostics ----'
+}
+
 if(-not $ConfigPath){$ConfigPath=Join-Path $root 'config\spark-transport.local.json'}
 if(-not (Test-Path $ConfigPath)){
   Write-Host '[S2-01] FAIL - local config not found.' -ForegroundColor Red
@@ -173,11 +196,13 @@ try{
 Set-Content -Encoding ascii (Join-Path $runtime 'tunnel-client.pid') $proc.Id
 Write-Host "[S2-08] PASS - tunnel-client started, PID=$($proc.Id)"
 
-Write-Host '[S2-09] Waiting for tunnel /readyz...'
-$deadline=(Get-Date).AddSeconds(20)
+$readyTimeoutSeconds=60
+Write-Host "[S2-09] Waiting for tunnel /readyz (up to $readyTimeoutSeconds seconds)..."
+$deadline=(Get-Date).AddSeconds($readyTimeoutSeconds)
 do{
   Start-Sleep -Milliseconds 500
   if($proc.HasExited){
+    Show-TunnelHealthDiagnostics
     Fail-Step 'S2-09' "tunnel-client exited before readyz, exitCode=$($proc.ExitCode). Check .runtime\tunnel-doctor.log and run tunnel-client.exe run --profile $profile --profile-dir $profileDir manually for console diagnostics."
   }
   try{
@@ -185,5 +210,9 @@ do{
     if($ready.Content.Trim() -eq 'ready'){Write-Host "[S2-09] PASS - tunnel ready (PID $($proc.Id))";Start-ChatGPTApp;Write-Host '[S2-11] PASS - Startup complete.';exit 0}
   }catch{}
 }while((Get-Date)-lt$deadline)
-try{if(-not $proc.HasExited){Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue}}catch{}
-Fail-Step 'S2-09' 'tunnel-client did not become ready within 20 seconds'
+
+Show-TunnelHealthDiagnostics
+if(-not $proc.HasExited){
+  Write-Host "[S2-09] INFO - tunnel-client remains running as PID $($proc.Id) so readiness diagnostics are preserved. Run SPARK_Transport.cmd stop to clean it up."
+}
+Fail-Step 'S2-09' "tunnel-client did not become ready within $readyTimeoutSeconds seconds"
