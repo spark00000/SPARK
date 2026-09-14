@@ -364,7 +364,7 @@ Deployment invariants:
 - user/device/SPARK instance마다 distinct `tunnel_id`를 사용한다. 동일 tunnel을 서로 다른 local SPARK instance가 공유하지 않는다.
 - MCP app display name은 authorization identity가 아니다. 이름이 같거나 workspace에 app이 노출되어 있어도 다른 사용자의 local SPARK authority를 얻어서는 안 된다.
 - 각 local SPARK instance는 **instance-specific credential**을 검증한다. 0.0.1 source에는 `transport.auth.mode=bearer`와 `bearerTokenSha256` 기반 local MCP ingress 검증이 구현되었으며, raw token은 local config에 저장하지 않고 SHA-256 digest만 보관한다. `Authorization: Bearer <token>`이 없거나 digest가 일치하지 않으면 MCP path는 `401`로 fail closed한다. 현재 release default는 backward compatibility 때문에 `none`이며, ChatGPT `Access token / API key` E2E와 installer provisioning을 통과한 뒤 0.0.1 deployment default를 확정한다.
-- 0.0.1 인증은 중앙 OAuth/auth server 없이 **per-instance static bearer/access token(API key)** 을 사용한다. Credential은 instance마다 달라야 하고, local SPARK는 raw token이 아니라 SHA-256 digest만 저장하며, manual rotate/revoke를 지원한다. `no scheduled expiry`는 허용하지만 분실/노출 시 폐기할 수 없는 credential로 설계하지 않는다.
+- 0.0.1 인증은 중앙 OAuth/auth server 없이 **per-instance static bearer/access token(API key)** 을 사용한다. Credential은 instance마다 달라야 하고, local SPARK는 raw token이 아니라 SHA-256 digest만 저장하며, manual rotate/revoke를 지원한다. `no scheduled expiry`는 허용하지만 분실/노출 시 폐기할 수 없는 credential로 설계하지 않는다. Token은 외부 service나 human password가 아니라 Node.js built-in `crypto.randomBytes(32)`처럼 OS CSPRNG를 사용하는 256-bit random source에서 생성한다.
 - 사용자 입력 password는 기본 인증 방식으로 사용하지 않는다. 사람이 정한 password보다 installer가 생성한 high-entropy random token을 사용해 brute-force/재사용 위험을 줄인다.
 - OAuth/OIDC는 0.0.1 범위에서 구현하지 않는다. 팀/계정 lifecycle, self-service onboarding 또는 중앙 revocation 같은 요구가 실제로 생길 때 후속 버전에서 재검토한다.
 - local SPARK는 **자기 instance에 허용된 credential만** 승인한다. Workspace membership 또는 app visibility만으로 authorization하지 않는다.
@@ -404,23 +404,29 @@ Consequences:
 
 0.0.1 does not add unrestricted binary transfer merely to make every local file downloadable. A future file-transfer capability requires an explicit size/streaming/download design and acceptance test on the actual Brain Host client.
 
-### 10.9. Timeout, Watchdog and Progress Semantics
+### 10.9. Timeout, Watchdog, Reconciliation and Progress Semantics
 
-Current `run_command` is synchronous and bounded. The default command timeout is 30 seconds; an explicit `timeoutMs` may override it. On timeout SPARK terminates the process tree and returns `COMMAND_TIMEOUT` with `retryable=true`. A timed-out process is **not** left running in the background.
+All user-facing synchronous waits must be bounded. `run_command` keeps its default 30-second command timeout and may accept an explicit positive `timeoutMs`. The process runner does not wait indefinitely for Node's child `close` event: after process exit it allows a short bounded output-drain grace, and Windows timeout cleanup bounds the `taskkill /T /F` helper itself before returning. This closes the failure mode where a descendant-held stdio handle caused a nominal `COMMAND_TIMEOUT` to remain blocked for hours.
 
-A user-facing "continue this same command?" interaction cannot safely preserve the same process with the current synchronous `run_command` contract. ChatGPT cannot ask the user a new question until the pending MCP tool call returns. Therefore the current safe behavior is:
+A final operation watchdog also wraps every MCP tool invocation. The default non-command operation watchdog is 30 seconds. `run_command` receives its requested/default command timeout plus a bounded cleanup grace. HTTP request receive time and server shutdown are independently bounded, as are Recycle Bin helper execution, bootstrap downloads, validation HTTP calls, test cases and CI jobs.
+
+Timeout does **not** mean rollback. A command such as `git clone`, compiler/package install, file copy or arbitrary script can have partial side effects before it is killed. Therefore timeout/failure semantics distinguish confirmed completion from uncertain state:
 
 ```text
-run_command
-  -> hard timeout
-  -> terminate process tree
-  -> return COMMAND_TIMEOUT
-  -> Brain/UX asks whether to retry with a larger timeout
+operation timeout / command timeout
+  -> stop or bound the controllable execution path
+  -> return explicit timeout/failure
+  -> stateUncertain=true when mutation may already have occurred
+  -> do not blindly retry
+  -> inspect/reconcile filesystem, process and/or Git state
+  -> only then retry with a larger timeout or choose cleanup
 ```
 
-A retry starts a new process; it is not process continuation. Commands with non-idempotent side effects must not be blindly retried.
+If a mutating FileService operation exceeds the generic operation watchdog while its underlying promise has not settled, SPARK records it as a **pending uncertain mutation** and fail-closes subsequent mutations with `UNCERTAIN_MUTATION_IN_FLIGHT`. Read-only inspection remains available for reconciliation. The pending guard clears only when the underlying operation actually settles; if it never settles, operator recovery/restart is required rather than overlapping another mutation.
 
-True long-running continuation/progress requires the deferred managed ProcessService lifecycle:
+A user-facing "continue this same command?" interaction still cannot preserve the same process with the current synchronous `run_command` contract. ChatGPT cannot ask a new question until the pending MCP call returns. After timeout, a larger-timeout execution is a **new process**, not continuation, and must follow reconciliation first.
+
+True long-running continuation/progress remains a deferred managed ProcessService lifecycle:
 
 ```text
 start_process
@@ -429,13 +435,11 @@ process_output
 stop_process
 ```
 
-That design can return a process handle immediately, allow the Brain/UX to report progress or ask the user whether to continue, and explicitly stop the managed process when requested. SPARK SHALL NOT emulate this by timing out the HTTP response while leaving an unmanaged child running.
+That design can return a process handle immediately, expose output/status incrementally, ask the user whether to continue, and explicitly stop the managed process when requested. SPARK SHALL NOT emulate continuation by merely timing out the HTTP response while intentionally leaving an unmanaged child running.
 
-The current HTTP MCP dispatcher has no generic per-request cancellation watchdog around every FileService/ProcessService operation, and the operation ledger records completion/failure after the underlying tool returns rather than exposing an in-flight heartbeat. A generic request timeout that merely returns an error while an uncancellable mutation continues would create false completion semantics and is therefore not adopted.
+OpenAI Secure MCP Tunnel independently bounds MCP transport connection lifetime (currently default 10 minutes) and supports forwarded MCP progress notifications. That transport TTL is an upper transport bound, not SPARK's operation watchdog. Current SPARK JSON-only HTTP MCP does not yet stream in-flight MCP progress notifications.
 
-OpenAI Secure MCP Tunnel independently bounds MCP transport connection lifetime (currently default 10 minutes) and supports forwarded MCP progress notifications. That transport TTL is an upper transport bound, not SPARK's user-facing operation watchdog. SPARK's current JSON-only HTTP MCP implementation does not stream progress notifications for an in-flight tool call.
-
-Operational UX rule for ChatGPT-driven SPARK work: long multi-step work SHOULD emit visible milestone reports between tool calls (for example `Step 1/4 complete`). A true periodic heartbeat cannot be emitted while one blocking MCP call has not returned; bounded tool calls and the future managed ProcessService are the mechanisms for eliminating that blind interval.
+Operational UX rule for AI-driven SPARK work: multi-stage work SHOULD emit visible `Step n/m` milestone reports before and after meaningful stages or potentially blocking tool calls. A true periodic heartbeat cannot be emitted while one blocking MCP call has control; the Agent must not invent background progress and must report the actual elapsed/result immediately when control returns.
 
 ## 11. Recoverable Delete
 
@@ -587,7 +591,7 @@ Architecture-only / deferred:
 | ADR-026 | 약 5명 규모의 0.0.1에서는 per-instance high-entropy bearer/access token을 최소 인증 방식으로 채택한다. Local SPARK는 raw token 대신 SHA-256 digest를 저장하고 `Authorization: Bearer`를 fail-closed 검증한다. OAuth/OIDC는 account lifecycle이 필요할 때 선택적으로 사용 |
 | ADR-027 | text/binary 구분은 heuristic이 아니라 operation contract로 정의한다. `read_file`은 strict UTF-8 text이며 arbitrary binary/file download는 별도 bounded MCP resource/blob/download capability로 설계 |
 | ADR-028 | 0.0.1 multi-user 인증은 중앙 OAuth/relay 없이 per-instance high-entropy static bearer/API key를 사용하고, OAuth/OIDC와 same-PC hostile-process isolation은 후속 scope로 defer |
-| ADR-029 | synchronous `run_command` timeout은 process tree를 종료하고 `COMMAND_TIMEOUT`을 반환한다. 동일 process의 진짜 continue/heartbeat는 managed asynchronous ProcessService가 필요하며, 응답만 timeout시키고 unmanaged child를 남기는 구현은 금지 |
+| ADR-029 | 모든 synchronous MCP operation은 bounded watchdog을 갖는다. `run_command`는 process exit/stdio drain/tree-kill까지 bounded하며, timed-out mutation은 `stateUncertain`로 처리하고 reconciliation 전 blind retry를 금지한다. 아직 settle되지 않은 timed-out mutation이 있으면 후속 mutation을 fail-closed로 차단한다. 동일 process의 진짜 continue/streaming progress는 managed asynchronous ProcessService로만 구현한다 |
 
 ## 18. 0.0.0 Verification Status
 

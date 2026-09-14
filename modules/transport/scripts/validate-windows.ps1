@@ -22,7 +22,7 @@ function Call-Tool([string]$Name,[hashtable]$Arguments){
   $script:id++
   $body=@{jsonrpc='2.0';id=$script:id;method='tools/call';params=@{name=$Name;arguments=$Arguments;_meta=@{'io.modelcontextprotocol/protocolVersion'=$proto;'io.modelcontextprotocol/clientCapabilities'=@{};'io.modelcontextprotocol/clientInfo'=@{name='spark-transport-validator';version='1'}}}}|ConvertTo-Json -Depth 12 -Compress
   $h=@{'MCP-Protocol-Version'=$proto;'Mcp-Method'='tools/call';'Mcp-Name'=$Name}
-  try{return (Invoke-RestMethod -Method Post -Uri $base -Headers $h -ContentType 'application/json' -Body $body).result.structuredContent}catch{Fail-Step 'S2V-MCP' "$Name request failed: $($_.Exception.Message)"}
+  try{return (Invoke-RestMethod -Method Post -Uri $base -Headers $h -ContentType 'application/json' -Body $body -TimeoutSec 15).result.structuredContent}catch{Fail-Step 'S2V-MCP' "$Name request failed or exceeded 15 second watchdog: $($_.Exception.Message)"}
 }
 
 function Assert-Ok($r,[string]$Id,[string]$Name){

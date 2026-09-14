@@ -65,6 +65,9 @@ test('Windows lifecycle scripts preserve help/start/restart/status/stop contract
   assert.match(start, /Test-Path -LiteralPath \$moduleConfig -PathType Leaf/);
   assert.match(start, /Get-Process -Name 'ChatGPT'/);
   assert.match(start, /npm run --silent transport:start/);
+  assert.match(start, /bounded-process-cli\.mjs/);
+  assert.match(start, /30000 \$client doctor/);
+  assert.match(stop, /bounded-process-cli\.mjs/);
   assert.match(status, /npm run --silent transport:status/);
   assert.match(start, /\.StartsWith\('\[S2-08\]'\)/);
   assert.doesNotMatch(start, /-like\s+'\[S2-0[78]\]\*'/i);

@@ -2,7 +2,7 @@ import crypto from 'node:crypto';
 import fs from 'node:fs/promises';
 import http from 'node:http';
 import path from 'node:path';
-import { APP_NAME, APP_VERSION, MAX_REQUEST_BYTES, MCP_PROTOCOL_VERSION } from './constants.mjs';
+import { APP_NAME, APP_VERSION, DEFAULT_HTTP_REQUEST_TIMEOUT_MS, DEFAULT_SERVER_CLOSE_TIMEOUT_MS, MAX_REQUEST_BYTES, MCP_PROTOCOL_VERSION } from './constants.mjs';
 import { createOperationLedger } from './ledger.mjs';
 import { createMcpDispatcher, validateModernRequest } from './mcp.mjs';
 import { createOperationRuntime } from './operation-runtime.mjs';
@@ -29,12 +29,14 @@ async function readJsonBody(req){let size=0;const chunks=[];for await(const chun
 
 export async function createSparkServer(config,injections={}){
   if(!['127.0.0.1','localhost','::1'].includes(config.host))throw new Error('server must bind to a loopback host');
+  const httpRequestTimeoutMs=config.httpRequestTimeoutMs??DEFAULT_HTTP_REQUEST_TIMEOUT_MS;
+  const serverCloseTimeoutMs=config.serverCloseTimeoutMs??DEFAULT_SERVER_CLOSE_TIMEOUT_MS;
   const policy=await createPathPolicy(config.rootPolicies??config.roots??config.root);
   const {ledger:injectedLedger,runner:injectedRunner,...toolInjections}=injections;
   const ledger=injectedLedger??createOperationLedger({stateDir:config.stateDir});
   const runner=injectedRunner??((options)=>runProcess({...options,maxOutputBytes:config.maxCommandOutputBytes}));
   const rawToolRuntime=createToolRuntime({policy,maxReadBytes:config.maxReadBytes,stateDir:config.stateDir,commandTimeoutMs:config.commandTimeoutMs,recycleBin:config.recycleBin,runner,...toolInjections});
-  const toolRuntime=createOperationRuntime({toolRuntime:rawToolRuntime,ledger});
+  const toolRuntime=createOperationRuntime({toolRuntime:rawToolRuntime,ledger,operationTimeoutMs:config.operationTimeoutMs,commandTimeoutMs:config.commandTimeoutMs});
   const dispatcher=createMcpDispatcher({toolRuntime});
   const server=http.createServer(async(req,res)=>{
     if(!validateOrigin(req)){sendJson(res,403,{error:'invalid host/origin'});return;}
@@ -56,7 +58,9 @@ export async function createSparkServer(config,injections={}){
     if(!validation.ok){sendJson(res,validation.status??400,validation.error);return;}
     try{const result=await dispatcher.dispatch(body);sendJson(res,result?.error?.code===-32601?404:200,result);}catch{sendJson(res,200,{jsonrpc:'2.0',id:body.id??null,error:{code:-32603,message:'Internal error'}});}
   });
-  return{policy,rawToolRuntime,toolRuntime,ledger,server,async listen(){await new Promise((resolve,reject)=>{server.once('error',reject);server.listen(config.port,config.host,()=>{server.off('error',reject);resolve();});});return server.address();},async close(){if(!server.listening)return;await new Promise((resolve,reject)=>server.close(e=>e?reject(e):resolve()));}};
+  server.requestTimeout=httpRequestTimeoutMs;
+  server.headersTimeout=httpRequestTimeoutMs;
+  return{policy,rawToolRuntime,toolRuntime,ledger,server,async listen(){await new Promise((resolve,reject)=>{server.once('error',reject);server.listen(config.port,config.host,()=>{server.off('error',reject);resolve();});});return server.address();},async close(){if(!server.listening)return;await new Promise((resolve,reject)=>{let settled=false;let timer;const finish=(error)=>{if(settled)return;settled=true;clearTimeout(timer);error?reject(error):resolve();};try{server.close(error=>finish(error));}catch(error){finish(error);return;}timer=setTimeout(()=>{try{server.closeAllConnections?.();}catch{}finish();},serverCloseTimeoutMs);});}};
 }
 
 export async function ensureStateDir(config){await fs.mkdir(config.stateDir,{recursive:true});return{pidFile:path.join(config.stateDir,'spark.pid'),logFile:path.join(config.stateDir,'spark.log')};}

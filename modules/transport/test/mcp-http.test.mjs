@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
+import net from 'node:net';
 import path from 'node:path';
 import test from 'node:test';
 import { createSparkServer } from '../src/server.mjs';
@@ -80,4 +81,22 @@ test('bearer auth denies unauthenticated MCP calls and accepts the configured to
   assert.equal(res.status,200);
   const json=await res.json();
   assert.equal(json.result.tools.length,10);
+});
+
+test('HTTP receive and server shutdown waits are explicitly bounded',async(t)=>{
+  const f=await makeFixture();
+  t.after(f.cleanup);
+  const port=await freePort();
+  const config={root:f.root,host:'127.0.0.1',port,mcpPath:'/mcp',healthPath:'/health',maxReadBytes:1024,stateDir:path.join(f.base,'state'),commandTimeoutMs:1000,operationTimeoutMs:100,httpRequestTimeoutMs:250,serverCloseTimeoutMs:100,maxCommandOutputBytes:4096,recycleBin:true};
+  const rt=await createSparkServer(config);
+  await rt.listen();
+  assert.equal(rt.server.requestTimeout,250);
+  assert.equal(rt.server.headersTimeout,250);
+  const socket=net.createConnection({host:'127.0.0.1',port});
+  await new Promise((resolve,reject)=>{socket.once('connect',resolve);socket.once('error',reject);});
+  socket.write('POST /mcp HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Type: application/json\r\nContent-Length: 100\r\n\r\n{');
+  const started=Date.now();
+  await rt.close();
+  assert.ok(Date.now()-started<1000);
+  socket.destroy();
 });

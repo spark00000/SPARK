@@ -164,9 +164,12 @@ test('config normalizes optional MCP bearer authentication', async (t) => {
   t.after(f.cleanup);
   const digest = 'a'.repeat(64);
   const configPath = path.join(f.base, 'config-auth.json');
-  await fs.writeFile(configPath, JSON.stringify({ transport: { allowedRoot: f.root, auth: { mode: 'bearer', bearerTokenSha256: digest } } }), 'utf8');
+  await fs.writeFile(configPath, JSON.stringify({ transport: { allowedRoot: f.root, operationTimeoutMs: 4567, httpRequestTimeoutMs: 2345, serverCloseTimeoutMs: 765, auth: { mode: 'bearer', bearerTokenSha256: digest } } }), 'utf8');
   const config = loadConfig({ configPath });
   assert.deepEqual(config.auth, { mode: 'bearer', bearerTokenSha256: digest });
+  assert.equal(config.operationTimeoutMs, 4567);
+  assert.equal(config.httpRequestTimeoutMs, 2345);
+  assert.equal(config.serverCloseTimeoutMs, 765);
 
   const noAuthPath = path.join(f.base, 'config-no-auth.json');
   await fs.writeFile(noAuthPath, JSON.stringify({ transport: { allowedRoot: f.root } }), 'utf8');

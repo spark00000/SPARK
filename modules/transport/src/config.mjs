@@ -6,10 +6,13 @@ import {
   DEFAULT_COMMAND_TIMEOUT_MS,
   DEFAULT_HEALTH_PATH,
   DEFAULT_HOST,
+  DEFAULT_HTTP_REQUEST_TIMEOUT_MS,
   DEFAULT_MAX_COMMAND_OUTPUT_BYTES,
   DEFAULT_MAX_READ_BYTES,
   DEFAULT_MCP_PATH,
+  DEFAULT_OPERATION_TIMEOUT_MS,
   DEFAULT_PORT,
+  DEFAULT_SERVER_CLOSE_TIMEOUT_MS,
 } from './constants.mjs';
 
 const MODULE_DIR = path.dirname(fileURLToPath(import.meta.url));
@@ -130,6 +133,9 @@ export function loadConfig(overrides = {}) {
     healthPath: overrides.healthPath ?? env.SPARK_HEALTH_PATH ?? transport.healthPath ?? DEFAULT_HEALTH_PATH,
     maxReadBytes: positiveInteger(overrides.maxReadBytes ?? env.SPARK_MAX_READ_BYTES ?? transport.maxReadBytes, DEFAULT_MAX_READ_BYTES, 'maxReadBytes'),
     commandTimeoutMs: positiveInteger(overrides.commandTimeoutMs ?? env.SPARK_COMMAND_TIMEOUT_MS ?? transport.commandTimeoutMs, DEFAULT_COMMAND_TIMEOUT_MS, 'commandTimeoutMs'),
+    operationTimeoutMs: positiveInteger(overrides.operationTimeoutMs ?? env.SPARK_OPERATION_TIMEOUT_MS ?? transport.operationTimeoutMs, DEFAULT_OPERATION_TIMEOUT_MS, 'operationTimeoutMs'),
+    httpRequestTimeoutMs: positiveInteger(overrides.httpRequestTimeoutMs ?? env.SPARK_HTTP_REQUEST_TIMEOUT_MS ?? transport.httpRequestTimeoutMs, DEFAULT_HTTP_REQUEST_TIMEOUT_MS, 'httpRequestTimeoutMs'),
+    serverCloseTimeoutMs: positiveInteger(overrides.serverCloseTimeoutMs ?? env.SPARK_SERVER_CLOSE_TIMEOUT_MS ?? transport.serverCloseTimeoutMs, DEFAULT_SERVER_CLOSE_TIMEOUT_MS, 'serverCloseTimeoutMs'),
     maxCommandOutputBytes: positiveInteger(overrides.maxCommandOutputBytes ?? env.SPARK_MAX_COMMAND_OUTPUT_BYTES ?? transport.maxCommandOutputBytes, DEFAULT_MAX_COMMAND_OUTPUT_BYTES, 'maxCommandOutputBytes'),
     stateDir: path.resolve(overrides.stateDir ?? env.SPARK_STATE_DIR ?? transport.stateDir ?? defaultPrivateStateDir()),
     recycleBin: transport.recycleBin !== false,

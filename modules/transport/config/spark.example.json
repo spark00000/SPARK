@@ -16,6 +16,9 @@
     "healthPath": "/health",
     "maxReadBytes": 1048576,
     "commandTimeoutMs": 30000,
+    "operationTimeoutMs": 30000,
+    "httpRequestTimeoutMs": 15000,
+    "serverCloseTimeoutMs": 3000,
     "stateDir": ".runtime",
     "recycleBin": true,
     "auth": {
