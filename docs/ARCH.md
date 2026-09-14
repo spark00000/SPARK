@@ -1,6 +1,6 @@
 # ARCH — SPARK (Symbiotic Personal AI Robotic Keeper)
 
-**Version:** 0.0.0
+**Version:** 0.0.1
 **Status:** Accepted Architecture Baseline
 **Architecture review:** 2026-09-12 / 1.23
 
@@ -363,7 +363,7 @@ Deployment invariants:
 
 - user/device/SPARK instance마다 distinct `tunnel_id`를 사용한다. 동일 tunnel을 서로 다른 local SPARK instance가 공유하지 않는다.
 - MCP app display name은 authorization identity가 아니다. 이름이 같거나 workspace에 app이 노출되어 있어도 다른 사용자의 local SPARK authority를 얻어서는 안 된다.
-- 각 local SPARK instance는 **instance-specific credential**을 검증한다. 0.0.1 source에는 `transport.auth.mode=bearer`와 `bearerTokenSha256` 기반 local MCP ingress 검증이 구현되었으며, raw token은 local config에 저장하지 않고 SHA-256 digest만 보관한다. `Authorization: Bearer <token>`이 없거나 digest가 일치하지 않으면 MCP path는 `401`로 fail closed한다. 현재 release default는 backward compatibility 때문에 `none`이며, ChatGPT `Access token / API key` E2E와 installer provisioning을 통과한 뒤 0.0.1 deployment default를 확정한다.
+- 각 local SPARK instance는 **instance-specific credential**을 검증한다. 0.0.1 source에는 `transport.auth.mode=bearer`와 `bearerTokenSha256` 기반 local MCP ingress 검증이 구현되었으며, raw token은 local config에 저장하지 않고 SHA-256 digest만 보관한다. `Authorization: Bearer <token>`이 없거나 digest가 일치하지 않으면 MCP path는 `401`로 fail closed한다. 0.0.1 tracked example config는 bearer mode와 fail-closed placeholder digest를 기본으로 하며, `SPARK init`이 실제 instance digest로 교체한다. Source-level `none` fallback은 legacy/development compatibility를 위해 남지만 public deployment는 bearer provisioning을 요구한다.
 - 0.0.1 인증은 중앙 OAuth/auth server 없이 **per-instance static bearer/access token(API key)** 을 사용한다. Credential은 instance마다 달라야 하고, local SPARK는 raw token이 아니라 SHA-256 digest만 저장하며, manual rotate/revoke를 지원한다. `no scheduled expiry`는 허용하지만 분실/노출 시 폐기할 수 없는 credential로 설계하지 않는다. Token은 외부 service나 human password가 아니라 Node.js built-in `crypto.randomBytes(32)`처럼 OS CSPRNG를 사용하는 256-bit random source에서 생성한다.
 - 사용자 입력 password는 기본 인증 방식으로 사용하지 않는다. 사람이 정한 password보다 installer가 생성한 high-entropy random token을 사용해 brute-force/재사용 위험을 줄인다.
 - OAuth/OIDC는 0.0.1 범위에서 구현하지 않는다. 팀/계정 lifecycle, self-service onboarding 또는 중앙 revocation 같은 요구가 실제로 생길 때 후속 버전에서 재검토한다.
@@ -440,6 +440,8 @@ That design can return a process handle immediately, expose output/status increm
 OpenAI Secure MCP Tunnel independently bounds MCP transport connection lifetime (currently default 10 minutes) and supports forwarded MCP progress notifications. That transport TTL is an upper transport bound, not SPARK's operation watchdog. Current SPARK JSON-only HTTP MCP does not yet stream in-flight MCP progress notifications.
 
 Operational UX rule for AI-driven SPARK work: multi-stage work SHOULD emit visible `Step n/m` milestone reports before and after meaningful stages or potentially blocking tool calls. A true periodic heartbeat cannot be emitted while one blocking MCP call has control; the Agent must not invent background progress and must report the actual elapsed/result immediately when control returns.
+
+0.0.1 adds an **experimental local progress projection** in `modules/chatgpt-ui`: the watcher polls the loopback Transport health endpoint and injects a compact ChatGPT UI overlay. `SPARK` progress is determinate because it uses local `startedAt/watchdogMs`; Brain progress is only an indeterminate working/elapsed heuristic derived from visible provider UI controls. Exact provider token/credit telemetry is displayed as unavailable unless the Brain Host exposes a trustworthy value. This overlay is UX telemetry only, not an execution or authorization boundary, and it can be disabled with `chatgptUi.progress.enabled=false`.
 
 ## 11. Recoverable Delete
 
@@ -534,9 +536,9 @@ Root `scripts/`는 SPARK 전체 lifecycle orchestration(`start-all/status-all/st
 - **codex-chatgpt-web** — bridge가 자체 parallel permission sandbox를 발명하지 않고 outer Codex execution/sandbox authority를 재사용하는 delegation pattern reference.
 - **Jan** — future provider-neutral/local-model client and UI reference.
 
-## 16. 0.0.0 Implemented Scope
+## 16. Implemented Scope
 
-Implemented:
+### 16.1. Inherited 0.0.0 baseline
 
 - 10 MCP tools: read/list/CRUD/delete/run_command
 - recovery backup + SHA-256
@@ -548,6 +550,17 @@ Implemented:
 - private default state directory
 - lifecycle/status
 - Windows + Linux CI
+
+### 16.2. 0.0.1 multi-user / deployment release-candidate additions
+
+- per-instance `Authorization: Bearer` validation with only SHA-256 token digest stored locally
+- `SPARK auth generate` using Node.js `crypto.randomBytes(32)` / OS CSPRNG for a 256-bit access key
+- `SPARK init` first-use provisioning that refuses to overwrite an existing private config and prints the raw access key only for initial connection setup
+- fail-closed example config with bearer auth enabled and a non-working placeholder digest until first-use provisioning replaces it
+- distinct per-user/device Secure MCP Tunnel + per-instance access-key deployment model with no SPARK-operated central payload relay
+- bounded command/tool/request/lifecycle watchdogs plus `stateUncertain` reconciliation semantics after timed-out mutations
+- experimental ChatGPT UI progress strip: Brain working/elapsed heuristic, exact SPARK watchdog progress, and explicit `provider metrics unavailable` when token/credit telemetry is not exposed
+- ChatGPT UI runtime JSON reader tolerates the Windows PowerShell UTF-8 BOM used by existing runtime files
 
 Architecture-only / deferred:
 
@@ -593,7 +606,10 @@ Architecture-only / deferred:
 | ADR-028 | 0.0.1 multi-user 인증은 중앙 OAuth/relay 없이 per-instance high-entropy static bearer/API key를 사용하고, OAuth/OIDC와 same-PC hostile-process isolation은 후속 scope로 defer |
 | ADR-029 | 모든 synchronous MCP operation은 bounded watchdog을 갖는다. `run_command`는 process exit/stdio drain/tree-kill까지 bounded하며, timed-out mutation은 `stateUncertain`로 처리하고 reconciliation 전 blind retry를 금지한다. 아직 settle되지 않은 timed-out mutation이 있으면 후속 mutation을 fail-closed로 차단한다. 동일 process의 진짜 continue/streaming progress는 managed asynchronous ProcessService로만 구현한다 |
 
-## 18. 0.0.0 Verification Status
+| ADR-030 | 0.0.1 per-instance SPARK access keys SHALL be generated from 32 CSPRNG bytes (`crypto.randomBytes(32)` / OS entropy), encoded with the `spk_` prefix, and stored by SPARK only as a SHA-256 digest. Human-chosen passwords are not the 0.0.1 default. |
+| ADR-031 | Experimental ChatGPT UI progress SHALL distinguish measured SPARK watchdog progress from heuristic Brain-working indication and unavailable provider usage telemetry; SPARK SHALL NOT fabricate reasoning percentages, token counts, or credit consumption. |
+
+## 18. Verification Status
 
 0.0.0 baseline acceptance는 다음 검증을 포함한다.
 
@@ -606,6 +622,20 @@ Architecture-only / deferred:
 - GitHub Actions Node 24 matrix의 Ubuntu/Windows jobs PASS.
 
 Public baseline은 위 gate를 통과한 **single root commit**을 `v0.0.0`으로 tag한다. Independent Architecture Peer review는 별도 process gate이며 이 문서의 author self-check와 동일시하지 않는다.
+
+### 18.2. 0.0.1 release-candidate gate
+
+0.0.1 source promotion is valid only when the following remain true:
+
+- package/runtime/launcher version agree on `0.0.1`.
+- per-instance bearer authorization positive/negative regression passes.
+- `SPARK auth generate` and `SPARK init` use 256-bit OS-CSPRNG material and do not persist the raw access key.
+- new-install example config is fail closed with bearer mode enabled until provisioning replaces the placeholder digest.
+- watchdog/reconciliation regressions pass and no known synchronous SPARK-owned wait is unbounded.
+- ChatGPT UI theme validation passes and the experimental progress overlay renders on the real ChatGPT Windows DOM without inventing usage metrics.
+- tracked-source hygiene excludes `_pArc/`, `.runtime/`, nested `.SPARK.wiki`, private config, and secrets.
+- Windows + Linux CI pass on the candidate commit.
+- **Pending final live gate:** after restarting onto the 0.0.1 source, one ChatGPT custom-app connection using `Access token / API key` + Bearer must succeed with its own key and fail with a different instance key. Until that user-scoped E2E passes, do not create/move the `v0.0.1` final tag.
 
 ## 19. External References
 

@@ -43,7 +43,7 @@ export async function createSparkServer(config,injections={}){
     const url=new URL(req.url??'/',`http://${req.headers.host??'127.0.0.1'}`);
     if(url.pathname===config.healthPath){
       if(req.method!=='GET'){res.writeHead(405,{allow:'GET'});res.end();return;}
-      sendJson(res,200,{status:'ok',name:APP_NAME,version:APP_VERSION,protocol:MCP_PROTOCOL_VERSION,mode:'mutation-execution'});return;
+      sendJson(res,200,{status:'ok',name:APP_NAME,version:APP_VERSION,protocol:MCP_PROTOCOL_VERSION,mode:'mutation-execution',activity:toolRuntime.activity?.()??null});return;
     }
     if(url.pathname!==config.mcpPath){res.writeHead(404);res.end();return;}
     if(req.method!=='POST'){res.writeHead(405,{allow:'POST'});res.end();return;}

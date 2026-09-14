@@ -94,11 +94,32 @@ function stateMayHaveChanged(name, legacy) {
 
 export function createOperationRuntime({ toolRuntime, ledger, operationTimeoutMs = 30_000, commandTimeoutMs = 30_000, ledgerTimeoutMs = DEFAULT_LEDGER_WATCHDOG_MS }) {
   let pendingUncertainMutation = null;
+  let activeOperation = null;
+  let lastOperation = null;
+
+  function activity() {
+    return {
+      active: activeOperation ? { ...activeOperation } : null,
+      pendingUncertainMutation: pendingUncertainMutation ? {
+        operationId: pendingUncertainMutation.operationId,
+        operation: pendingUncertainMutation.name,
+      } : null,
+      last: lastOperation ? { ...lastOperation } : null,
+    };
+  }
 
   async function call(name, args = {}) {
     const operationId = ledger.nextOperationId();
     const startedAt = Date.now();
     const watchdogMs = watchdogMsFor(name, args, operationTimeoutMs, commandTimeoutMs);
+    activeOperation = {
+      operationId,
+      operation: name,
+      startedAt: new Date(startedAt).toISOString(),
+      startedAtMs: startedAt,
+      watchdogMs,
+      mutating: MUTATING_OPERATIONS.has(name),
+    };
     let legacy;
     if (MUTATING_OPERATIONS.has(name) && pendingUncertainMutation) {
       legacy = {
@@ -179,8 +200,19 @@ export function createOperationRuntime({ toolRuntime, ledger, operationTimeoutMs
     } catch {
       result.data.ledgerWarning = 'operation ledger write failed';
     }
+    lastOperation = {
+      operationId,
+      operation: name,
+      status: result.ok ? 'success' : 'failed',
+      startedAt: new Date(startedAt).toISOString(),
+      finishedAt: new Date().toISOString(),
+      durationMs,
+      stateUncertain,
+      errorCode: error?.code ?? null,
+    };
+    if (activeOperation?.operationId === operationId) activeOperation = null;
     return result;
   }
 
-  return { call };
+  return { call, activity };
 }

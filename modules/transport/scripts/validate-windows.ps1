@@ -17,11 +17,17 @@ try{$config=Get-Content -Raw $ConfigPath | ConvertFrom-Json}catch{Fail-Step 'S2V
 $base="http://$($config.transport.host):$($config.transport.port)$($config.transport.mcpPath)"
 $proto='2026-07-28'
 $id=100
+$authHeader=$null
+if($config.transport.auth -and [string]$config.transport.auth.mode -eq 'bearer'){
+  if(-not $env:SPARK_MCP_BEARER_TOKEN){Fail-Step 'S2V-01A' 'Bearer auth is enabled. Set SPARK_MCP_BEARER_TOKEN for this validation process.'}
+  $authHeader='Bearer '+$env:SPARK_MCP_BEARER_TOKEN
+}
 
 function Call-Tool([string]$Name,[hashtable]$Arguments){
   $script:id++
   $body=@{jsonrpc='2.0';id=$script:id;method='tools/call';params=@{name=$Name;arguments=$Arguments;_meta=@{'io.modelcontextprotocol/protocolVersion'=$proto;'io.modelcontextprotocol/clientCapabilities'=@{};'io.modelcontextprotocol/clientInfo'=@{name='spark-transport-validator';version='1'}}}}|ConvertTo-Json -Depth 12 -Compress
   $h=@{'MCP-Protocol-Version'=$proto;'Mcp-Method'='tools/call';'Mcp-Name'=$Name}
+  if($authHeader){$h['Authorization']=$authHeader}
   try{return (Invoke-RestMethod -Method Post -Uri $base -Headers $h -ContentType 'application/json' -Body $body -TimeoutSec 15).result.structuredContent}catch{Fail-Step 'S2V-MCP' "$Name request failed or exceeded 15 second watchdog: $($_.Exception.Message)"}
 }
 

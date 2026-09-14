@@ -36,6 +36,27 @@ test('operation runtime normalizes success and persists ledger',async(t)=>{
   assert.equal(recent[1].operation,'create_file');
 });
 
+test('operation activity exposes bounded metadata without target or arguments',async()=>{
+  let release;
+  const gate=new Promise((resolve)=>{release=resolve;});
+  const ledger={nextOperationId:()=> 'op-activity',record:async(entry)=>entry};
+  const toolRuntime={call:async()=>{await gate;return{ok:true,path:'secret.txt',text:'x'};}};
+  const runtime=createOperationRuntime({toolRuntime,ledger,operationTimeoutMs:1000,ledgerTimeoutMs:100});
+  const pending=runtime.call('read_file',{path:'secret.txt'});
+  await new Promise((resolve)=>setTimeout(resolve,10));
+  const active=runtime.activity();
+  assert.equal(active.active.operationId,'op-activity');
+  assert.equal(active.active.operation,'read_file');
+  assert.equal(active.active.watchdogMs,1000);
+  assert.equal(Object.hasOwn(active.active,'path'),false);
+  release();
+  await pending;
+  const done=runtime.activity();
+  assert.equal(done.active,null);
+  assert.equal(done.last.operation,'read_file');
+  assert.equal(done.last.status,'success');
+});
+
 test('operation runtime makes permission failure explicit',async(t)=>{
   const stateDir=await fs.mkdtemp(path.join(os.tmpdir(),'spark-ledger-'));
   t.after(()=>fs.rm(stateDir,{recursive:true,force:true}));

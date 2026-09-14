@@ -22,13 +22,16 @@
     "stateDir": ".runtime",
     "recycleBin": true,
     "auth": {
-      "mode": "none",
-      "bearerTokenSha256": ""
+      "mode": "bearer",
+      "bearerTokenSha256": "0000000000000000000000000000000000000000000000000000000000000000"
     }
   },
   "chatgptUi": {
     "enabled": true,
-    "theme": "dark-red"
+    "theme": "dark-red",
+    "progress": {
+      "enabled": true
+    }
   },
   "tunnel": {
     "enabled": true,

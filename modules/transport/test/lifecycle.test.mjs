@@ -47,18 +47,26 @@ test('Transport start/status/stop/restart', async (t) => {
   assert.equal(result.code, 0, result.err);
 });
 
-test('Windows lifecycle scripts preserve help/start/restart/status/stop contract', async () => {
-  const [cmd, start, stop, status, uiLauncher, uiCli] = await Promise.all([
+test('Windows lifecycle scripts preserve help/init/start/restart/status/stop contract', async () => {
+  const [cmd, init, start, stop, status, uiLauncher, uiCli, uiWatcher] = await Promise.all([
     fs.readFile(path.join(ROOT, 'SPARK.cmd'), 'utf8'),
+    fs.readFile(path.join(ROOT, 'scripts', 'init-user.ps1'), 'utf8'),
     fs.readFile(path.join(ROOT, 'scripts', 'start-all.ps1'), 'utf8'),
     fs.readFile(path.join(ROOT, 'scripts', 'stop-all.ps1'), 'utf8'),
     fs.readFile(path.join(ROOT, 'scripts', 'status-all.ps1'), 'utf8'),
     fs.readFile(path.join(ROOT, 'modules', 'chatgpt-ui', 'scripts', 'start-chatgpt-ui.ps1'), 'utf8'),
     fs.readFile(path.join(ROOT, 'modules', 'chatgpt-ui', 'src', 'cli.mjs'), 'utf8'),
+    fs.readFile(path.join(ROOT, 'modules', 'chatgpt-ui', 'src', 'watch.mjs'), 'utf8'),
   ]);
 
   assert.match(cmd, /if "%~1"=="" goto :usage/i);
+  assert.match(cmd, /if \/I "%~1"=="init" goto :init/i);
+  assert.match(cmd, /if \/I "%~1"=="auth" goto :auth/i);
   assert.match(cmd, /if \/I "%~1"=="restart" goto :restart/i);
+  assert.match(init, /auth-cli\.mjs/);
+  assert.match(init, /\$authCli generate --json/);
+  assert.match(init, /refusing to overwrite/i);
+  assert.match(init, /UTF8Encoding.*false/);
   assert.match(start, /Get-StartApps/);
   assert.match(start, /modules\\transport\\config\\spark\.local\.json/);
   assert.match(start, /\.runtime\\config\\spark\.local\.json/);
@@ -102,6 +110,10 @@ test('Windows lifecycle scripts preserve help/start/restart/status/stop contract
   assert.match(uiLauncher, /start-chatgpt-ui|SPARK ChatGPT UI/i);
   assert.match(uiLauncher, /\[UI-01\].*Theme config validated/);
   assert.match(uiLauncher, /\[UI-06\].*startup complete/);
+  assert.match(uiLauncher, /TransportHealthUrl/);
+  assert.match(uiWatcher, /--transport-health/);
+  assert.match(uiWatcher, /buildProgressExpression/);
+  assert.match(start, /chatgptUi\.progress/);
   assert.doesNotMatch(uiLauncher, /\$result\s*\|\s*ConvertTo-Json/);
   assert.match(uiCli, /Chrome DevTools|CDP|apply|restore/i);
 });

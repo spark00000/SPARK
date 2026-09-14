@@ -50,10 +50,19 @@ function Start-ChatGPTExperience(){
 
   $theme='dark-red'
   if($config.PSObject.Properties.Name -contains 'chatgptUi' -and $config.chatgptUi.theme){$theme=[string]$config.chatgptUi.theme}
+  $progressEnabled=$true
+  if($config.PSObject.Properties.Name -contains 'chatgptUi' -and $config.chatgptUi -and $config.chatgptUi.PSObject.Properties.Name -contains 'progress' -and $config.chatgptUi.progress -and $config.chatgptUi.progress.enabled -eq $false){$progressEnabled=$false}
+  $transportHost=if($config.transport.host){[string]$config.transport.host}else{'127.0.0.1'}
+  $transportUrlHost=if($transportHost -eq '::1'){'[::1]'}else{$transportHost}
+  $transportPort=if($config.transport.port){[int]$config.transport.port}else{8765}
+  $healthPath=if($config.transport.healthPath){[string]$config.transport.healthPath}else{'/health'}
+  $transportHealthUrl="http://${transportUrlHost}:$transportPort$healthPath"
   $launcher=Join-Path $root 'modules\chatgpt-ui\scripts\start-chatgpt-ui.ps1'
   if(-not (Test-Path -LiteralPath $launcher -PathType Leaf)){Fail-Step 'S2-10' "ChatGPT UI launcher not found: $launcher"}
-  Write-Host "[S2-10] Starting ChatGPT with integrated ChatGPT UI: $theme"
-  & node $boundedProcess 60000 powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File $launcher -Theme $theme
+  Write-Host "[S2-10] Starting ChatGPT with integrated ChatGPT UI: $theme, progress=$progressEnabled"
+  $uiArgs=@('-NoLogo','-NoProfile','-ExecutionPolicy','Bypass','-File',$launcher,'-Theme',$theme,'-TransportHealthUrl',$transportHealthUrl)
+  if(-not $progressEnabled){$uiArgs+='-DisableProgress'}
+  & node $boundedProcess 60000 powershell.exe @uiArgs
   if($LASTEXITCODE -ne 0){Fail-Step 'S2-10' "integrated ChatGPT UI launcher failed or exceeded 60 second watchdog (exitCode=$LASTEXITCODE)"}
   if(-not (Test-ChatGPTUiRuntime)){Fail-Step 'S2-10' 'ChatGPT UI launcher returned success but runtime validation failed'}
   Write-Host '[S2-10] PASS - ChatGPT + ChatGPT UI runtime active'

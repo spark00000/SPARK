@@ -68,6 +68,10 @@ test('bearer auth denies unauthenticated MCP calls and accepts the configured to
 
   let res=await fetch(`http://127.0.0.1:${port}/health`);
   assert.equal(res.status,200);
+  const health=await res.json();
+  assert.equal(health.version,'0.0.1');
+  assert.equal(health.activity.active,null);
+  assert.equal(health.activity.pendingUncertainMutation,null);
 
   const body=requestEnvelope('tools/list');
   res=await fetch(`http://127.0.0.1:${port}/mcp`,{method:'POST',headers:headersFor(body),body:JSON.stringify(body)});
