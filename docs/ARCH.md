@@ -309,7 +309,28 @@ Linux/macOS에 native primitive가 존재한다는 사실은 현재 SPARK가 안
 
 선정 기준은 동일하다: SPARK-specific second security engine을 만들지 않고, 단순하고 운영 가능한 provider-native enforcement가 있으면 PAL에서 재사용한다. 그런 방식이 충분히 단순하지 않으면 현 gap을 문서화한 상태로 **TBD**에 유지한다.
 
-### 10.5. Native Security State Lifecycle
+### 10.5. Cygwin Research — POSIX/ACL Helper, Not a Sandbox
+
+Cygwin은 Windows 위에서 POSIX-style path, shell, GNU file utilities와 ACL tools를 제공하므로 Windows PAL의 helper/provider 후보로 연구 가치가 있다. 특히 NTFS mount에서 Cygwin은 filesystem ACL을 사용해 POSIX permission을 구현하고 `chmod`, `getfacl`, `setfacl` 같은 interface를 Windows ACL에 매핑한다. 따라서 Windows-specific SID/ACE handling을 SPARK Core에 직접 흩뿌리는 대신, 일부 File/Permission PAL operation을 POSIX-like façade로 단순화할 가능성이 있다.
+
+그러나 Cygwin 자체는 ProcessService confinement boundary가 아니다.
+
+- Cygwin process는 여전히 Windows security token과 NTFS ACL의 적용을 받는다.
+- `/cygdrive/<drive>`와 mount table을 통해 Windows filesystem을 접근하며, Cygwin은 POSIX path와 Win32-style path를 모두 지원한다.
+- Cygwin shell에서 `powershell.exe`, `cmd.exe`, `python.exe` 같은 native Windows executable을 호출할 수 있으므로 Cygwin mount view만으로 outside-root access를 차단했다고 주장할 수 없다.
+- 따라서 `Cygwin bash = Linux sandbox`로 취급하지 않는다.
+
+SPARK의 현재 disposition은 다음과 같다.
+
+```text
+Cygwin as File/Permission PAL helper        = research candidate
+Cygwin as process/filesystem security wall = rejected
+ProcessService confinement                  = TBD
+```
+
+Cygwin을 실제 dependency로 채택하기 전에는 설치 footprint, update lifecycle, ACL translation edge cases, native-Windows-tool escape semantics, removal/rollback cost를 별도 평가한다. enforcement authority는 Cygwin 자체가 아니라 최종적으로 Windows kernel / access token / NTFS ACL 같은 provider-native mechanism에 있어야 한다.
+
+### 10.6. Native Security State Lifecycle
 
 Provider native mechanism이 persistent OS state를 필요로 하는 경우 그 state도 PAL/provider lifecycle의 일부로 취급한다.
 
@@ -388,7 +409,7 @@ Transport config 탐색 순서는 명시적 `configPath` → 실제 존재하는
 
 Secure MCP Tunnel의 process reuse는 liveness와 runtime identity를 분리해 판단한다. `/readyz`가 `ready`라는 사실만으로 기존 process를 재사용하지 않으며, config `tunnel.id`, generated profile의 `tunnel_id`, SPARK-owned PID, `.runtime/tunnel-runtime.json`, profile path/SHA-256이 일치하고 Control Plane poll까지 성공해야 동일 runtime으로 인정한다. 불일치하면 기존 profile을 private recovery에 보존한 뒤 현재 config 기준으로 재생성하고 tunnel-client를 다시 시작한다.
 
-Local-only state boundary는 clone마다 달라질 수 있는 `.git/info/exclude`나 user-global ignore가 아니라 tracked repository policy로 정의한다. `.gitignore`가 `_pArc/`, `.runtime/`, private `spark.local.json` 위치를 직접 제외해야 하며, release hygiene 검증도 tracked rule만으로 동일 결과가 재현되어야 한다.
+Local-only state boundary는 clone마다 달라질 수 있는 `.git/info/exclude`나 user-global ignore가 아니라 tracked repository policy로 정의한다. `.gitignore`가 `_pArc/`, `.runtime/`, private `spark.local.json`, nested GitHub Wiki working tree `.SPARK.wiki`를 직접 제외해야 하며, release hygiene 검증도 tracked rule만으로 동일 결과가 재현되어야 한다. `.SPARK.wiki`는 GitHub Wiki remote를 가진 별도 Git repository이며 SPARK main repository의 tracked tree에 포함하지 않는다.
 
 Root `scripts/`는 SPARK 전체 lifecycle orchestration(`start-all/status-all/stop-all`)만 소유한다. tunnel bootstrap과 Windows Transport validation처럼 Transport에만 속하는 script는 `modules/transport/scripts/`가 소유한다.
 
@@ -465,6 +486,7 @@ Architecture-only / deferred:
 | ADR-021 | Security enforcement는 PAL/provider가 제공하는 native OS/filesystem mechanism을 재사용하며, 동일 목적의 parallel SPARK-specific sandbox를 만들지 않음 |
 | ADR-022 | Container/VM 같은 heavyweight isolation은 default dependency로 도입하지 않으며, practical native enforcement가 없으면 capability를 과장하지 않고 security gap을 명시 |
 | ADR-023 | Current `run_command`의 `X`는 cwd authorization만 의미한다. child process의 filesystem/network confinement은 provider-native PAL 구현이 검증될 때까지 TBD이며, `R`-only 및 unconfigured paths는 ProcessService boundary로 보호된다고 주장하지 않음 |
+| ADR-024 | Cygwin은 Windows File/Permission PAL을 단순화할 수 있는 POSIX/ACL helper 후보로만 연구하며, ProcessService sandbox 또는 filesystem security boundary로 취급하지 않음 |
 
 ## 18. 0.0.0 Verification Status
 
@@ -491,6 +513,8 @@ Project process/verification records are local-only under `_pArc/` (`SWE1.md`, `
 - OpenAI Codex: https://github.com/openai/codex
 - Anthropic Sandbox Runtime: https://github.com/anthropics/sandbox-runtime
 - codex-chatgpt-web: https://github.com/miuuyy/codex-chatgpt-web
+- Cygwin User's Guide / filesystem and ACL behavior: https://cygwin.com/cygwin-ug-net/using.html
+- Cygwin `setfacl`: https://cygwin.com/cygwin-ug-net/setfacl.html
 - Jan: https://github.com/janhq/jan
 
 ## Baseline Handoff

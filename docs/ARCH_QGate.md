@@ -23,7 +23,7 @@
 | normalized result / operation ledger | PASS |
 | ledger/recovery lazy runtime creation from clean state | PASS |
 | private config/runtime excluded from Git | PASS |
-| tracked `.gitignore` excludes `_pArc/`, `.runtime/`, private config without local-exclude dependency | PASS |
+| tracked `.gitignore` excludes `_pArc/`, `.runtime/`, `.SPARK.wiki`, private config without local-exclude dependency | PASS |
 | tunnel runtime identity/profile/hash + Control Plane reuse gate | PASS |
 | Transport lifecycle + no-argument help contract | PASS |
 | Ubuntu Node 24 CI | PASS |
@@ -43,7 +43,7 @@
 - ChatGPT UI theme validate PASS
 - PowerShell lifecycle parser PASS
 - release-file privacy/secret scan PASS
-- tracked repository hygiene check PASS (`_pArc/`, `.runtime/`, private config excluded without local/global ignore dependency)
+- tracked repository hygiene check PASS (`_pArc/`, `.runtime/`, `.SPARK.wiki`, private config excluded without local/global ignore dependency)
 - live tunnel identity/control-plane + 10-tool ChatGPT MCP smoke PASS
 - GitHub Actions Ubuntu Node 24 PASS
 - GitHub Actions Windows Node 24 PASS
@@ -54,6 +54,7 @@ Exact run IDs, merge SHA, tag and live runtime acceptance are maintained in loca
 
 - **DEBT-001:** Windows process ownership is verified through timeout tree termination for the private-use baseline; native Windows Job Object remains the preferred stronger production backend.
 - **DEBT-002 / TBD:** `run_command` cwd containment is not an OS filesystem/network sandbox. If any root grants `X`, the launched process may read/write/delete `R`-only or unconfigured paths wherever the ambient OS user is permitted; FileService R/W and Recycle Bin-only semantics do not constrain arbitrary child I/O. SPARK will not add a parallel command parser or default heavyweight container/VM to mask this gap. ProcessService filesystem/network confinement remains TBD until a simple provider-native PAL mechanism is selected and verified.
+- **DEBT-003 / RESEARCH:** Cygwin was evaluated as a Windows POSIX/ACL helper. It may simplify future File/Permission PAL operations because NTFS ACLs can be surfaced through POSIX-style permission tools, but Cygwin is not accepted as a ProcessService sandbox or outside-root confinement boundary.
 - **DEPLOY-001:** ChatGPT mutation/exec live MCP E2E는 2026-09-14에 최신 Transport service/tunnel 기준으로 완료했습니다.
 - **DEPLOY-002:** 통합된 Transport + Tunnel + ChatGPT UI `SPARK start` 경로의 최종 사용자 runtime acceptance를 2026-09-14에 완료했습니다.
 - **PROCESS-001:** Independent Architecture Peer review has not been executed in this authoring context.

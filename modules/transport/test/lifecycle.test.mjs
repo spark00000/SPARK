@@ -107,5 +107,6 @@ test('repository hygiene keeps local-only state out of tracked source', async ()
   const gitignore = await fs.readFile(path.join(ROOT, '.gitignore'), 'utf8');
   assert.match(gitignore, /(?:^|\r?\n)_pArc\/(?:\r?\n|$)/);
   assert.match(gitignore, /(?:^|\r?\n)\.runtime\/(?:\r?\n|$)/);
+  assert.match(gitignore, /(?:^|\r?\n)\.SPARK\.wiki\/?(?:\r?\n|$)/);
   assert.match(gitignore, /modules\/transport\/config\/spark\.local\.json/);
 });

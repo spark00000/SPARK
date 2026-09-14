@@ -1,4 +1,5 @@
 .runtime/
+.SPARK.wiki
 _pArc/
 modules/transport/config/spark.local.json
 modules/transport/tools/tunnel-client/*
