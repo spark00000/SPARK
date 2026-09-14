@@ -82,6 +82,8 @@ AI Brain
 10. **Bounded execution** — timeout, descendant cleanup, bounded stdout/stderr.
 11. **User-visible ledger** — chat transcript만 operation history로 간주하지 않는다.
 12. **No model API dependency** — Transport service 자체는 OpenAI/Anthropic/Google model API를 호출하지 않는다.
+13. **Native security delegation** — SPARK는 filesystem/OS provider가 제공하는 native security primitive를 PAL/Body Port를 통해 재사용하며, 같은 목적의 별도 SPARK-specific security substrate를 만들지 않는다.
+14. **Security transparency over false isolation** — 현 단계에서는 최소한의 native mechanism을 우선하고 container/VM 같은 heavyweight isolation을 default로 도입하지 않는다. 실용적인 native enforcement가 없으면 자체 parser/guardrail로 안전하다고 가장하지 않고 inherited security hole을 명시한다.
 
 ## 4. Brain Gateway
 
@@ -231,7 +233,38 @@ X = run_command cwd authorization
 
 문자열 Root config는 backward compatibility를 위해 `RWX`로 해석한다.
 
-## 10. Command Execution Trust Statement
+## 10. Security Architecture
+
+### 10.1. Native Provider Security Delegation
+
+SPARK는 filesystem/process security를 독자적인 second security stack으로 다시 구현하지 않는다. PAL/Body Port의 목적 중 하나는 각 filesystem/OS provider가 제공하는 native security primitive를 재사용하고 provider-specific 차이를 Core 밖에 격리하는 것이다.
+
+- FileService의 path validation/canonicalization은 logical authorization과 fail-closed input validation을 담당한다.
+- ProcessService의 실제 filesystem/network/process confinement이 필요하면 해당 OS/provider의 native enforcement를 PAL이 사용한다.
+- SPARK-specific command parser, regex blocklist, argument inspection, path 문자열 필터는 OS-level confinement의 대체물이 아니다.
+- provider native mechanism 자체에 defect 또는 bypass가 있으면 SPARK가 별도 parallel sandbox를 덧씌워 보완한다고 가정하지 않는다. 이는 inherited provider risk로 기록하고 upstream/provider fix 또는 provider replacement로 해결한다.
+- 한 OS에서 사용한 mechanism을 다른 OS에 억지로 복제하지 않는다. PAL은 Windows, Linux, macOS 및 향후 device/filesystem provider별 native mechanism을 선택할 수 있다.
+
+이 원칙은 `codex-chatgpt-web`처럼 outer execution provider가 이미 제공하는 sandbox authority를 재사용하는 구조와 동일한 방향이다. SPARK Core는 security policy의 의미를 정의할 수 있지만 physical enforcement mechanism은 provider/PAL이 소유한다.
+
+### 10.2. Simplicity / No Heavyweight Isolation by Default
+
+현 단계에서는 security를 이유로 container, VM 또는 별도 full runtime environment를 SPARK의 기본 dependency로 도입하지 않는다. 목표는 이미 설치된 OS/filesystem provider가 제공하는 최소 native primitive로 요구 boundary를 표현하는 것이다.
+
+```text
+SPARK policy intent
+  -> PAL / provider adapter
+  -> native OS/filesystem security mechanism
+```
+
+실용적이고 단순한 native enforcement로 요구 boundary를 만들 수 없으면 다음 순서를 따른다.
+
+1. capability를 실제보다 강하게 표현하지 않는다.
+2. application-level parser/guardrail을 security boundary라고 부르지 않는다.
+3. 해당 security hole과 영향 범위를 Architecture/Security 문서에 명확히 기록한다.
+4. heavyweight isolation은 별도 architecture decision과 명시적 scope가 있을 때만 검토한다.
+
+### 10.3. Current 0.0.0 Command Execution Trust Statement
 
 0.0.0 `run_command`는 **trusted local, non-elevated capability**다.
 
@@ -245,7 +278,22 @@ X = run_command cwd authorization
 - automatic UAC/RunAs 금지
 - **cwd confinement은 OS filesystem sandbox가 아니다**
 
-0.0.0 Windows timeout cleanup은 verified `taskkill /T /F` tree termination을 사용한다. CatDesk에서 확인한 Windows Job Object는 stronger production ownership backend로 후속 DEBT에 유지한다. Distribution-grade filesystem/network sandbox 역시 0.0.0 범위가 아니다.
+현재 구현은 `cwd`의 `X` 권한만 확인한 뒤 child process를 현재 Windows user token으로 실행한다. 따라서 `run_command`로 시작된 `git`, PowerShell, `cmd`, Node.js, Python 또는 다른 executable은 Windows account가 접근 가능한 경로를 직접 접근할 수 있으며, `allowedRoot` 밖의 filesystem을 OS 차원에서 차단하지 않는다. 이는 **0.0.0의 명시적 known security gap**이다.
+
+따라서 현재 `R/W/X`에서 `X`는 "해당 root를 command working directory로 사용할 수 있음"을 의미하며, "child process가 해당 root 밖을 읽거나 쓸 수 없음"을 의미하지 않는다. FileService의 allowed-root confinement와 ProcessService의 host process authority를 동일한 boundary로 간주해서는 안 된다.
+
+0.0.0 Windows timeout cleanup은 verified `taskkill /T /F` tree termination을 사용한다. CatDesk에서 확인한 Windows Job Object는 stronger process ownership backend지만 filesystem confinement을 제공하지 않는다. Windows command filesystem boundary를 강화할 때는 별도 SPARK parser가 아니라 Windows가 제공하는 native token/ACL/provider mechanism을 PAL에서 재사용하는 방향을 우선한다.
+
+### 10.4. Native Security State Lifecycle
+
+Provider native mechanism이 persistent OS state를 필요로 하는 경우 그 state도 PAL/provider lifecycle의 일부로 취급한다.
+
+- per-command마다 hidden local account를 생성/삭제하지 않는다.
+- persistent sandbox account/SID, ACL/ACE, WFP rule, profile 또는 credential state가 필요한 provider를 채택하면 install/status/uninstall ownership과 rollback을 명시한다.
+- session-scoped ACE/temp/process state는 provider가 정상 종료 시 정리하고 crash-recovery 가능한 방식으로 소유해야 한다.
+- SPARK는 provider state를 모방하는 별도 shadow security database를 만들지 않는다.
+
+예를 들어 Anthropic Sandbox Runtime의 Windows provider는 dedicated `srt-sandbox` account를 installation-scoped state로 유지하고, session ACE는 reset/process-exit 및 다음 initialize의 crash-recovery에서 정리하며, uninstall은 WFP filters, sandbox account, credential file, setup marker를 제거하는 lifecycle을 제공한다. SPARK가 유사한 provider를 채택할 경우에도 같은 종류의 deterministic lifecycle을 요구한다.
 
 ## 11. Recoverable Delete
 
@@ -335,6 +383,9 @@ Root `scripts/`는 SPARK 전체 lifecycle orchestration(`start-all/status-all/st
 - **CatDesk** — process ownership, timeout/cancel cleanup, bounded output, Windows Job Object concept, logical tools 우선.
 - **Local Coding Agent** — working directory vs authorization separation, capability concept, missing-target canonicalization, private authority state. AGPL source 직접 복사 금지 unless license strategy accepts it.
 - **ChatGPT Local Coder** — structured result/activity stream/process lifecycle decomposition. Open full-machine security model은 채택하지 않음.
+- **OpenAI Codex** — Windows native sandbox의 restricted token, sandbox principal/account, root ACL/ACE, process ownership 구조 reference.
+- **Anthropic Sandbox Runtime** — provider-native filesystem/network isolation과 install/session/uninstall lifecycle reference. Windows support 상태와 operational cost는 별도 검토 대상.
+- **codex-chatgpt-web** — bridge가 자체 parallel permission sandbox를 발명하지 않고 outer Codex execution/sandbox authority를 재사용하는 delegation pattern reference.
 - **Jan** — future provider-neutral/local-model client and UI reference.
 
 ## 16. 0.0.0 Implemented Scope
@@ -386,6 +437,8 @@ Architecture-only / deferred:
 | ADR-018 | Secure MCP Tunnel reuse requires config/profile/PID/hash identity + successful Control Plane poll; ready-only reuse 금지 |
 | ADR-019 | local-only source boundary는 tracked `.gitignore`로 재현 가능해야 하며 clone-local/global ignore에 의존하지 않음 |
 | ADR-020 | lifecycle console은 concise stage/status projection만 출력하고 detailed diagnostics/audit는 local runtime state에 보존 |
+| ADR-021 | Security enforcement는 PAL/provider가 제공하는 native OS/filesystem mechanism을 재사용하며, 동일 목적의 parallel SPARK-specific sandbox를 만들지 않음 |
+| ADR-022 | Container/VM 같은 heavyweight isolation은 default dependency로 도입하지 않으며, practical native enforcement가 없으면 capability를 과장하지 않고 security gap을 명시 |
 
 ## 18. 0.0.0 Verification Status
 
@@ -409,6 +462,9 @@ Project process/verification records are local-only under `_pArc/` (`SWE1.md`, `
 - CatDesk: https://github.com/Xeift/CatDesk
 - Local Coding Agent: https://github.com/LongNgn204/local-coding-agent
 - ChatGPT Local Coder: https://github.com/posavr/chatgpt-local-coder
+- OpenAI Codex: https://github.com/openai/codex
+- Anthropic Sandbox Runtime: https://github.com/anthropics/sandbox-runtime
+- codex-chatgpt-web: https://github.com/miuuyy/codex-chatgpt-web
 - Jan: https://github.com/janhq/jan
 
 ## Baseline Handoff
