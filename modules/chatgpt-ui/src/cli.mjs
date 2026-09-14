@@ -19,7 +19,7 @@ import {
 const DEFAULT_STATE_PATH = path.join(PROJECT_ROOT, ".runtime", "session.json");
 
 function usage() {
-  return `ChatGPT Theme Changer
+  return `SPARK ChatGPT UI
 
 Usage:
   node src/cli.mjs <validate|probe|scan|inspect|apply|status|restore> [options]
@@ -221,6 +221,6 @@ async function main() {
 }
 
 main().catch((error) => {
-  process.stderr.write(`chatgpt-theme-changer: ${error.stack ?? error.message}\n`);
+  process.stderr.write(`chatgpt-ui: ${error.stack ?? error.message}\n`);
   process.exitCode = 1;
 });

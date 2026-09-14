@@ -1,7 +1,7 @@
 {
   "$schema": "./theme.schema.json",
   "schemaVersion": 4,
-  "id": "chatgpt-theme-changer-dark-red",
+  "id": "chatgpt-ui-dark-red",
   "name": "Dark Red",
   "description": "The preserved dark-red title bar and user prompt theme with every supported color role made explicit.",
   "colors": {

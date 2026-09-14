@@ -84,7 +84,7 @@ Remove-Item -LiteralPath $ActivePath -Force -ErrorAction SilentlyContinue
 Remove-Item -LiteralPath (Join-Path $RuntimeDirectory 'watcher.json') -Force -ErrorAction SilentlyContinue
 
 [pscustomobject]@{
-    product = 'ChatGPT Theme Changer'
+    product = 'SPARK ChatGPT UI'
     restoredAt = [DateTime]::UtcNow.ToString('o')
     normalLaunch = $true
     debugPortClosedByRestart = $true

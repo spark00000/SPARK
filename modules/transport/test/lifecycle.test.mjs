@@ -20,7 +20,7 @@ function run(command, env) {
   });
 }
 
-test('daemon start/status/stop/restart', async (t) => {
+test('Transport start/status/stop/restart', async (t) => {
   const f = await makeFixture();
   const port = await freePort();
   const env = {
@@ -47,17 +47,17 @@ test('daemon start/status/stop/restart', async (t) => {
   assert.equal(result.code, 0, result.err);
 });
 
-test('Windows one-click lifecycle scripts preserve start/restart/status/stop contract', async () => {
-  const [cmd, start, stop, status, themeLauncher, themeCli] = await Promise.all([
+test('Windows lifecycle scripts preserve help/start/restart/status/stop contract', async () => {
+  const [cmd, start, stop, status, uiLauncher, uiCli] = await Promise.all([
     fs.readFile(path.join(ROOT, 'SPARK.cmd'), 'utf8'),
     fs.readFile(path.join(ROOT, 'scripts', 'start-all.ps1'), 'utf8'),
     fs.readFile(path.join(ROOT, 'scripts', 'stop-all.ps1'), 'utf8'),
     fs.readFile(path.join(ROOT, 'scripts', 'status-all.ps1'), 'utf8'),
-    fs.readFile(path.join(ROOT, 'modules', 'theme', 'scripts', 'start-chatgpt-theme-changer.ps1'), 'utf8'),
-    fs.readFile(path.join(ROOT, 'modules', 'theme', 'src', 'cli.mjs'), 'utf8'),
+    fs.readFile(path.join(ROOT, 'modules', 'chatgpt-ui', 'scripts', 'start-chatgpt-ui.ps1'), 'utf8'),
+    fs.readFile(path.join(ROOT, 'modules', 'chatgpt-ui', 'src', 'cli.mjs'), 'utf8'),
   ]);
 
-  assert.match(cmd, /if "%~1"=="" goto :start/i);
+  assert.match(cmd, /if "%~1"=="" goto :usage/i);
   assert.match(cmd, /if \/I "%~1"=="restart" goto :restart/i);
   assert.match(start, /Get-StartApps/);
   assert.match(start, /modules\\transport\\config\\spark\.local\.json/);
@@ -73,16 +73,17 @@ test('Windows one-click lifecycle scripts preserve start/restart/status/stop con
   assert.doesNotMatch(start, /did not become ready within 20 seconds/i);
   assert.match(start, /remains running as PID/);
   assert.match(start, /Start-ChatGPTExperience/);
-  assert.match(start, /modules\\theme\\scripts\\start-chatgpt-theme-changer\.ps1/);
-  assert.match(start, /Test-ThemeRuntime/);
+  assert.match(start, /modules\\chatgpt-ui\\scripts\\start-chatgpt-ui\.ps1/);
+  assert.match(start, /Test-ChatGPTUiRuntime/);
+  assert.match(cmd, /modules\\transport\\scripts\\validate-windows\.ps1/);
   assert.match(status, /Get-Process -Name 'ChatGPT'/);
-  assert.match(status, /Integrated theme runtime/);
-  assert.match(status, /modules\\theme\\\.runtime\\active\.json/);
+  assert.match(status, /ChatGPT UI runtime/);
+  assert.match(status, /modules\\chatgpt-ui\\\.runtime\\active\.json/);
   assert.match(stop, /\$tunnelPid\s*=/);
   assert.doesNotMatch(stop, /\$pid\s*=/i);
-  assert.match(stop, /modules\\theme\\\.runtime\\active\.json/);
+  assert.match(stop, /modules\\chatgpt-ui\\\.runtime\\active\.json/);
   assert.match(stop, /Stop-Process -Name|Stop-Process/);
-  assert.match(themeLauncher, /--remote-debugging-port=\$port/);
-  assert.match(themeLauncher, /start-chatgpt-theme-changer|Theme Changer/i);
-  assert.match(themeCli, /Chrome DevTools|CDP|apply|restore/i);
+  assert.match(uiLauncher, /--remote-debugging-port=\$port/);
+  assert.match(uiLauncher, /start-chatgpt-ui|SPARK ChatGPT UI/i);
+  assert.match(uiCli, /Chrome DevTools|CDP|apply|restore/i);
 });

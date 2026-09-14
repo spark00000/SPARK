@@ -36,6 +36,19 @@ test('tool definitions include Sprint-2 operations',()=>{
   assert.deepEqual(TOOL_DEFINITIONS.map(x=>x.name),['list_directory','read_file','create_file','write_file','modify_file','create_directory','copy_path','move_path','delete_path','run_command']);
 });
 
+test('recovery state is created lazily only when a recoverable mutation needs it',async(t)=>{
+  const {runtime,stateDir}=await runtimeFixture(t);
+  await assert.rejects(()=>fs.access(stateDir));
+  let r=await runtime.createFile({path:'lazy.txt',text:'before'});
+  assert.equal(r.ok,true);
+  await assert.rejects(()=>fs.access(stateDir));
+  r=await runtime.writeFile({path:'lazy.txt',text:'after'});
+  assert.equal(r.ok,true);
+  const recoveryFiles=await walkFiles(path.join(stateDir,'recovery'));
+  assert.ok(recoveryFiles.some(p=>p.endsWith('content.bin')));
+  assert.ok(recoveryFiles.some(p=>p.endsWith('metadata.json')));
+});
+
 test('CRUD works and recovery stays out of workspace',async(t)=>{
   const {f,runtime,recycled,stateDir}=await runtimeFixture(t);
   let r=await runtime.createFile({path:'new.txt',text:'alpha beta'});

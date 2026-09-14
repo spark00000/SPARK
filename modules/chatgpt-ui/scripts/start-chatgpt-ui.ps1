@@ -288,7 +288,7 @@ $Executable = Resolve-ChatGptExecutable -InstallRoot $InstallRoot
 $baseline = [ordered]@{
     schemaVersion = 2
     capturedAt = [DateTime]::UtcNow.ToString('o')
-    product = 'ChatGPT Theme Changer'
+    product = 'SPARK ChatGPT UI'
     projectRoot = $ProjectRoot
     themeSelection = $Theme
     themePath = $ThemePath
@@ -320,7 +320,7 @@ try {
     $active = [ordered]@{
         schemaVersion = 2
         launchedAt = [DateTime]::UtcNow.ToString('o')
-        product = 'ChatGPT Theme Changer'
+        product = 'SPARK ChatGPT UI'
         packageFullName = $package.PackageFullName
         appPid = $started.Id
         host = '127.0.0.1'

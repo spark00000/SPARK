@@ -27,35 +27,35 @@ function Start-NormalChatGPTApp(){
   Fail-Step 'S2-10' 'ChatGPT launch was requested but no ChatGPT process appeared within 10 seconds'
 }
 
-function Test-ThemeRuntime(){
-  $activePath=Join-Path $root 'modules\theme\.runtime\active.json'
+function Test-ChatGPTUiRuntime(){
+  $activePath=Join-Path $root 'modules\chatgpt-ui\.runtime\active.json'
   if(-not (Test-Path -LiteralPath $activePath -PathType Leaf)){return $false}
   try{
     $active=Get-Content -LiteralPath $activePath -Raw | ConvertFrom-Json
     if(-not $active.port -or -not $active.watcherPid){return $false}
     $watcher=Get-CimInstance Win32_Process -Filter "ProcessId=$($active.watcherPid)" -ErrorAction SilentlyContinue
-    if(-not $watcher -or -not $watcher.CommandLine -or $watcher.CommandLine.IndexOf('modules\theme\src\watch.mjs',[System.StringComparison]::OrdinalIgnoreCase) -lt 0){return $false}
+    if(-not $watcher -or -not $watcher.CommandLine -or $watcher.CommandLine.IndexOf('modules\chatgpt-ui\src\watch.mjs',[System.StringComparison]::OrdinalIgnoreCase) -lt 0){return $false}
     $targets=Invoke-RestMethod -Uri "http://127.0.0.1:$($active.port)/json/list" -TimeoutSec 1
     return (@($targets).Count -gt 0 -and [bool](Get-Process -Name 'ChatGPT' -ErrorAction SilentlyContinue))
   }catch{return $false}
 }
 
 function Start-ChatGPTExperience(){
-  $themeEnabled=$true
-  if($config.PSObject.Properties.Name -contains 'theme' -and $config.theme -and $config.theme.enabled -eq $false){$themeEnabled=$false}
-  if(-not $themeEnabled){Start-NormalChatGPTApp;return}
+  $uiEnabled=$true
+  if($config.PSObject.Properties.Name -contains 'chatgptUi' -and $config.chatgptUi -and $config.chatgptUi.enabled -eq $false){$uiEnabled=$false}
+  if(-not $uiEnabled){Start-NormalChatGPTApp;return}
 
-  if(Test-ThemeRuntime){Write-Host '[S2-10] PASS - ChatGPT theme runtime already active';return}
+  if(Test-ChatGPTUiRuntime){Write-Host '[S2-10] PASS - ChatGPT UI runtime already active';return}
 
-  $selection='dark-red'
-  if($config.PSObject.Properties.Name -contains 'theme' -and $config.theme.selection){$selection=[string]$config.theme.selection}
-  $launcher=Join-Path $root 'modules\theme\scripts\start-chatgpt-theme-changer.ps1'
-  if(-not (Test-Path -LiteralPath $launcher -PathType Leaf)){Fail-Step 'S2-10' "Theme launcher not found: $launcher"}
-  Write-Host "[S2-10] Starting ChatGPT with integrated theme: $selection"
-  & powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File $launcher -Theme $selection
-  if($LASTEXITCODE -ne 0){Fail-Step 'S2-10' 'integrated ChatGPT theme launcher failed'}
-  if(-not (Test-ThemeRuntime)){Fail-Step 'S2-10' 'theme launcher returned success but runtime validation failed'}
-  Write-Host '[S2-10] PASS - ChatGPT + theme runtime active'
+  $theme='dark-red'
+  if($config.PSObject.Properties.Name -contains 'chatgptUi' -and $config.chatgptUi.theme){$theme=[string]$config.chatgptUi.theme}
+  $launcher=Join-Path $root 'modules\chatgpt-ui\scripts\start-chatgpt-ui.ps1'
+  if(-not (Test-Path -LiteralPath $launcher -PathType Leaf)){Fail-Step 'S2-10' "ChatGPT UI launcher not found: $launcher"}
+  Write-Host "[S2-10] Starting ChatGPT with integrated ChatGPT UI: $theme"
+  & powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File $launcher -Theme $theme
+  if($LASTEXITCODE -ne 0){Fail-Step 'S2-10' 'integrated ChatGPT UI launcher failed'}
+  if(-not (Test-ChatGPTUiRuntime)){Fail-Step 'S2-10' 'ChatGPT UI launcher returned success but runtime validation failed'}
+  Write-Host '[S2-10] PASS - ChatGPT + ChatGPT UI runtime active'
 }
 
 function Show-TunnelHealthDiagnostics(){
@@ -101,38 +101,38 @@ Write-Host '[S2-02] Checking Node.js...'
 if($LASTEXITCODE -ne 0){Fail-Step 'S2-02' 'Node.js 20+ is required'}
 Write-Host '[S2-02] PASS - Node.js available'
 
-if($config.daemon.stateDir){
-  $daemonStateDir=Resolve-RepoRelative ([string]$config.daemon.stateDir)
+if($config.transport.stateDir){
+  $transportStateDir=Resolve-RepoRelative ([string]$config.transport.stateDir)
 }else{
   $privateBase=$env:LOCALAPPDATA
   if(-not $privateBase){$privateBase=$env:APPDATA}
   if(-not $privateBase){$privateBase=$env:USERPROFILE}
-  $daemonStateDir=Join-Path $privateBase 'SPARK'
+  $transportStateDir=Join-Path $privateBase 'SPARK'
 }
-$daemonLog=Join-Path $daemonStateDir 'spark.log'
+$transportLog=Join-Path $transportStateDir 'spark.log'
 
-Write-Host '[S2-03] Starting MCP daemon...'
+Write-Host '[S2-03] Starting Transport service...'
 Push-Location $root
 try {
-  & npm run daemon:start
+  & npm run transport:start
   if($LASTEXITCODE -ne 0){
-    Write-Host '[S2-03] FAIL - daemon start returned a non-zero exit code.' -ForegroundColor Red
-    Write-Host "[S2-03] Daemon log: $daemonLog"
-    if(Test-Path $daemonLog){
-      Write-Host '[S2-03] ---- daemon log tail ----'
-      Get-Content -Path $daemonLog -Tail 40
-      Write-Host '[S2-03] ---- end daemon log ----'
+    Write-Host '[S2-03] FAIL - Transport start returned a non-zero exit code.' -ForegroundColor Red
+    Write-Host "[S2-03] Transport log: $transportLog"
+    if(Test-Path $transportLog){
+      Write-Host '[S2-03] ---- Transport log tail ----'
+      Get-Content -Path $transportLog -Tail 40
+      Write-Host '[S2-03] ---- end Transport log ----'
     }
-    throw '[S2-03] daemon start failed'
+    throw '[S2-03] Transport start failed'
   }
 } finally { Pop-Location }
-Write-Host '[S2-03] PASS - MCP daemon started'
+Write-Host '[S2-03] PASS - Transport service started'
 
-$health="http://$($config.daemon.host):$($config.daemon.port)$($config.daemon.healthPath)"
+$health="http://$($config.transport.host):$($config.transport.port)$($config.transport.healthPath)"
 Write-Host "[S2-04] Health check: $health"
-try{$r=Invoke-RestMethod -TimeoutSec 3 $health}catch{Fail-Step 'S2-04' "daemon health request failed: $($_.Exception.Message)"}
-if($r.status -ne 'ok'){Fail-Step 'S2-04' 'daemon health response was not ok'}
-Write-Host "[S2-04] PASS - daemon healthy, version=$($r.version)"
+try{$r=Invoke-RestMethod -TimeoutSec 3 $health}catch{Fail-Step 'S2-04' "Transport health request failed: $($_.Exception.Message)"}
+if($r.status -ne 'ok'){Fail-Step 'S2-04' 'Transport health response was not ok'}
+Write-Host "[S2-04] PASS - Transport healthy, version=$($r.version)"
 
 if($config.tunnel.enabled -eq $false){Write-Host '[S2-05] PASS - Tunnel disabled by config.';Start-ChatGPTExperience;Write-Host '[S2-11] PASS - Startup complete.';exit 0}
 if(-not $config.tunnel.id -or $config.tunnel.id -like 'tunnel_x*'){Fail-Step 'S2-05' 'Set tunnel.id in local config'}
@@ -150,7 +150,7 @@ Write-Host "[S2-05] PASS - Tunnel key file: $keyPath (value hidden)"
 $clientDir=$config.tunnel.clientDir
 if(-not [System.IO.Path]::IsPathRooted($clientDir)){$clientDir=Join-Path $root $clientDir}
 Write-Host "[S2-06] Checking tunnel-client: $clientDir"
-& (Join-Path $root 'scripts\bootstrap-tunnel.ps1') -Version $config.tunnel.clientVersion -ClientDir $clientDir
+& (Join-Path $root 'modules\transport\scripts\bootstrap-tunnel.ps1') -Version $config.tunnel.clientVersion -ClientDir $clientDir
 if($LASTEXITCODE -ne 0){Fail-Step 'S2-06' 'tunnel-client bootstrap failed'}
 $client=Join-Path $clientDir 'tunnel-client.exe'
 if(-not (Test-Path $client)){Fail-Step 'S2-06' "tunnel-client.exe not found after bootstrap: $client"}

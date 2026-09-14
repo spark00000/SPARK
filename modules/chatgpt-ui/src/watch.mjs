@@ -105,7 +105,7 @@ async function main() {
 
 main().catch((error) => {
   process.stderr.write(
-    `chatgpt-theme-changer watcher: ${error.stack ?? error.message}\n`,
+    `chatgpt-ui watcher: ${error.stack ?? error.message}\n`,
   );
   process.exitCode = 1;
 });

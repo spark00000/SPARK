@@ -18,7 +18,7 @@ test("schema v4 compiles grouped color roles into deterministic internal rules",
   assert.equal(validateTheme(theme), theme);
   assert.deepEqual(describeTheme(theme), {
     schemaVersion: 4,
-    id: "chatgpt-theme-changer-rainbow-map",
+    id: "chatgpt-ui-rainbow-map",
     name: "Rainbow Element Map",
     colorCount: 108,
     colorGroupCount: 11,

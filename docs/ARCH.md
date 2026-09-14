@@ -81,7 +81,7 @@ AI Brain
 9. **Recoverability** — overwrite/modify recovery와 Windows Recycle Bin delete.
 10. **Bounded execution** — timeout, descendant cleanup, bounded stdout/stderr.
 11. **User-visible ledger** — chat transcript만 operation history로 간주하지 않는다.
-12. **No model API dependency** — daemon 자체는 OpenAI/Anthropic/Google model API를 호출하지 않는다.
+12. **No model API dependency** — Transport service 자체는 OpenAI/Anthropic/Google model API를 호출하지 않는다.
 
 ## 4. Brain Gateway
 
@@ -306,9 +306,13 @@ summary
 
 `SPARK status`는 recent operations를 health와 함께 표시한다.
 
-Core 자체의 config에 `stateDir`이 없으면 OS user-private state directory를 사용한다. 현재 private-use 배치는 `daemon.stateDir=".runtime"`을 사용하여 repository 내부의 Git-ignored `.runtime/`에 config, secret, ledger, recovery, PID/profile 같은 machine-local state를 모은다. tracked source에는 이 상태를 포함하지 않는다.
+Core 자체의 config에 `stateDir`이 없으면 OS user-private state directory를 사용한다. 현재 private-use 배치는 `transport.stateDir=".runtime"`을 사용하여 repository 내부의 Git-ignored `.runtime/`에 config, secret, ledger, recovery, PID/profile 같은 machine-local state를 모은다. tracked source에는 이 상태를 포함하지 않는다.
+
+`ledger/`와 `recovery/`는 배포 artifact가 아니다. `ledger/`는 첫 operation 기록 시, `recovery/`는 최초 recoverable write/modify snapshot 시 각각 `fs.mkdir(..., {recursive:true})`로 자동 생성된다. 따라서 clone/package에는 두 디렉터리가 없어야 정상이며, 삭제된 clean state에서도 runtime이 스스로 재생성할 수 있어야 한다.
 
 Transport config 탐색 순서는 명시적 `configPath` → 실제 존재하는 `SPARK_CONFIG` → 존재하는 `modules/transport/config/spark.local.json` → `.runtime/config/spark.local.json` fallback이다. tracked template은 `modules/transport/config/spark.example.json`만 유지한다.
+
+Root `scripts/`는 SPARK 전체 lifecycle orchestration(`start-all/status-all/stop-all`)만 소유한다. tunnel bootstrap과 Windows Transport validation처럼 Transport에만 속하는 script는 `modules/transport/scripts/`가 소유한다.
 
 ## 14. Brain Host Cost / Quota Rule
 
@@ -382,7 +386,7 @@ GitHub Actions Node 24 matrix에서 final version commit `5014a3e816c4ee6af57dd6
 - Ubuntu: PASS
 - Windows: PASS
 
-Source/automated Small PoC acceptance는 PASS다. Live ChatGPT Secure MCP Tunnel mutation/exec E2E는 배포된 local daemon을 0.0.0로 갱신한 뒤 별도 deployment acceptance로 수행한다. Independent Architecture Peer review 역시 별도 process gate이며 이 문서의 author self-check와 동일시하지 않는다.
+Source/automated Small PoC acceptance는 PASS다. Live ChatGPT Secure MCP Tunnel mutation/exec E2E는 배포된 local Transport service을 0.0.0로 갱신한 뒤 별도 deployment acceptance로 수행한다. Independent Architecture Peer review 역시 별도 process gate이며 이 문서의 author self-check와 동일시하지 않는다.
 
 ## 19. External References
 
@@ -396,7 +400,7 @@ Project process/verification records are local-only under `_pArc/` (`SWE1.md`, `
 
 ## Baseline Handoff
 
-`0.0.0`은 현재 기능을 정리한 verified **private-use baseline**이다. 이 baseline에는 Transport 10-tool, Secure MCP Tunnel, one-click lifecycle, integrated Theme, multi-root/RWX policy와 local-only runtime separation이 포함된다. 다음 `0.0.1`은 multi-user usage와 installation/deployment hardening을 별도 범위로 진행한다.
+`0.0.0`은 현재 기능을 정리한 verified **private-use baseline**이다. 이 baseline에는 Transport 10-tool, Secure MCP Tunnel, one-click lifecycle, integrated ChatGPT UI, multi-root/RWX policy와 local-only runtime separation이 포함된다. 다음 `0.0.1`은 multi-user usage와 installation/deployment hardening을 별도 범위로 진행한다.
 
 ## 20. Architecture Reference Study
 
@@ -439,7 +443,7 @@ SPARK는 이 요소를 **Client/Transport/Core/Policy/PAL**로 분리하여 조�
 
 | Concern | CatDesk | Local Coding Agent | ChatGPT Local Coder | SPARK decision |
 |---|---|---|---|---|
-| Model API required by local daemon | No | No | No | No |
+| Model API required by local Transport service | No | No | No | No |
 | ChatGPT Web/remote MCP orientation | Yes | Yes | Yes | Current client path |
 | Filesystem root policy | Canonical workspace root | Strong multi-root resolver | Current code is open/full disk | LCA concept + SPARK implementation |
 | Missing-target canonicalization | Partial/general canonical path logic | Longest-existing-ancestor canonicalization | No security boundary | Adopt LCA concept |
@@ -866,7 +870,7 @@ D. Local model
 | Claude Max 5x/20x | **Yes, strong candidate** | Same custom remote MCP | 5x/20x Pro session usage, 5-hour reset + weekly cap | Architecture only |
 | Gemini Apps | Chat subscription usage exists | Comparable web-chat custom MCP route **not verified in this study** | Compute-based; refreshes every 5h until weekly limit | Do not implement |
 | Jan + local model | API fee not required for local inference | Local MCP host | Local compute/resource limit | Future |
-| Direct provider API | Yes | API | Pay per usage/tokens | SPARK daemon does not require it |
+| Direct provider API | Yes | API | Pay per usage/tokens | SPARK Transport service does not require it |
 
 ## 4. Claude viability
 
@@ -983,22 +987,22 @@ The historical audit found workspace-visible scratch/recovery artifacts in logic
 
 PAL transparency is therefore part of the current verified baseline rather than an open gate.
 
-## 23. Integrated ChatGPT Theme Runtime
+## 23. Integrated ChatGPT UI Runtime
 
-SPARK는 CDP 기반 ChatGPT Theme 기능을 `modules/theme/` sub-project로 직접 포함한다. Theme runtime은 외부 Theme repository나 별도 local project에 의존하지 않는다.
+SPARK는 CDP 기반 ChatGPT Theme 기능을 `modules/chatgpt-ui/` sub-project로 직접 포함한다. ChatGPT UI runtime은 외부 Theme repository나 별도 local project에 의존하지 않는다.
 
 Runtime flow:
 
 ```text
-SPARK.cmd
-  -> MCP daemon
+SPARK.cmd start
+  -> Transport service
   -> Secure MCP Tunnel
-  -> integrated theme launcher
+  -> ChatGPT UI launcher
   -> ChatGPT Windows app with loopback-only CDP
   -> theme apply/status verification
   -> theme reload watcher
 ```
 
-The Theme component is not an MCP tool and does not change the 10-tool MCP contract. It belongs to the Client / UX Plane and Windows runtime integration. `theme.enabled=false` falls back to the normal ChatGPT Windows app launch path. `status` reports Theme watcher/CDP health separately, and `stop` terminates the Theme watcher before stopping ChatGPT.
+The theme feature inside ChatGPT UI is not an MCP tool and does not change the 10-tool MCP contract. The `chatgpt-ui` module belongs to the Client / UX Plane and Windows runtime integration and is the extension point for future font-size, wrapping and usage-display controls. `chatgptUi.enabled=false` falls back to the normal ChatGPT Windows app launch path. `status` reports ChatGPT UI watcher/CDP health separately, and `stop` terminates the ChatGPT UI watcher before stopping ChatGPT.
 
-Theme module은 원래 MIT license를 `modules/theme/LICENSE`에 유지한다. Theme runtime state는 `modules/theme/.runtime/`에 저장하며 Git에서 제외한다.
+ChatGPT UI module은 원래 MIT license를 `modules/chatgpt-ui/LICENSE`에 유지한다. ChatGPT UI runtime state는 `modules/chatgpt-ui/.runtime/`에 저장하며 Git에서 제외한다.

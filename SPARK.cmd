@@ -2,7 +2,7 @@
 setlocal
 cd /d "%~dp0"
 
-if "%~1"=="" goto :start
+if "%~1"=="" goto :usage
 
 if /I "%~1"=="start" goto :start
 if /I "%~1"=="restart" goto :restart
@@ -35,14 +35,24 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\stop-all.p
 exit /b %ERRORLEVEL%
 
 :validate
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\validate-windows-sprint2.ps1"
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0modules\transport\scripts\validate-windows.ps1"
 exit /b %ERRORLEVEL%
 
 :usage
-echo SPARK [start ^| restart ^| status ^| stop ^| validate]
-echo No argument = start daemon + tunnel + ChatGPT Windows app + integrated theme.
+echo SPARK 0.0.0 - Symbiotic Personal AI Robotic Keeper
+echo.
+echo Usage: SPARK [start ^| restart ^| status ^| stop ^| validate ^| help]
+echo.
+echo   start      Start Transport + Secure MCP Tunnel + ChatGPT UI
+echo   restart    Stop and start all runtime components
+echo   status     Show Transport, Tunnel, ChatGPT and ChatGPT UI status
+echo   stop       Stop runtime components
+echo   validate   Run Windows Transport validation
+echo   help       Show this help
+echo.
+echo No argument shows this help. Use "SPARK start" to launch the runtime.
 exit /b 0
 
 :usage_error
-echo SPARK [start ^| restart ^| status ^| stop ^| validate]
+echo Usage: SPARK [start ^| restart ^| status ^| stop ^| validate ^| help]
 exit /b 2

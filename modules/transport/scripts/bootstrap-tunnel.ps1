@@ -1,6 +1,6 @@
 param([Parameter(Mandatory=$true)][string]$Version,[Parameter(Mandatory=$true)][string]$ClientDir)
 $ErrorActionPreference = 'Stop'
-$root = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path)
+$root = (Resolve-Path (Join-Path $PSScriptRoot '..\..\..')).Path
 if (-not [System.IO.Path]::IsPathRooted($ClientDir)) { $ClientDir = Join-Path $root $ClientDir }
 $exe = Join-Path $ClientDir 'tunnel-client.exe'
 if (Test-Path $exe) { Write-Host "[S2-TUN-02] tunnel-client already installed: $exe"; exit 0 }

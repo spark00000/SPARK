@@ -1,5 +1,5 @@
 {
-  "daemon": {
+  "transport": {
     "allowedRoot": [
       {
         "path": "C:/SPARK/workspace",
@@ -19,9 +19,9 @@
     "stateDir": ".runtime",
     "recycleBin": true
   },
-  "theme": {
+  "chatgptUi": {
     "enabled": true,
-    "selection": "dark-red"
+    "theme": "dark-red"
   },
   "tunnel": {
     "enabled": true,

@@ -1,6 +1,6 @@
 param([string]$ConfigPath)
 $ErrorActionPreference='Stop'
-$root=Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path)
+$root=(Resolve-Path (Join-Path $PSScriptRoot '..\..\..')).Path
 
 function Fail-Step([string]$Id,[string]$Message){
   Write-Host "[$Id] FAIL - $Message" -ForegroundColor Red
@@ -14,13 +14,13 @@ if(-not $ConfigPath){
 }
 if(-not (Test-Path $ConfigPath)){Fail-Step 'S2V-01' 'local config not found'}
 try{$config=Get-Content -Raw $ConfigPath | ConvertFrom-Json}catch{Fail-Step 'S2V-01' "invalid JSON in local config: $($_.Exception.Message)"}
-$base="http://$($config.daemon.host):$($config.daemon.port)$($config.daemon.mcpPath)"
+$base="http://$($config.transport.host):$($config.transport.port)$($config.transport.mcpPath)"
 $proto='2026-07-28'
 $id=100
 
 function Call-Tool([string]$Name,[hashtable]$Arguments){
   $script:id++
-  $body=@{jsonrpc='2.0';id=$script:id;method='tools/call';params=@{name=$Name;arguments=$Arguments;_meta=@{'io.modelcontextprotocol/protocolVersion'=$proto;'io.modelcontextprotocol/clientCapabilities'=@{};'io.modelcontextprotocol/clientInfo'=@{name='windows-sprint2-validator';version='1'}}}}|ConvertTo-Json -Depth 12 -Compress
+  $body=@{jsonrpc='2.0';id=$script:id;method='tools/call';params=@{name=$Name;arguments=$Arguments;_meta=@{'io.modelcontextprotocol/protocolVersion'=$proto;'io.modelcontextprotocol/clientCapabilities'=@{};'io.modelcontextprotocol/clientInfo'=@{name='spark-transport-validator';version='1'}}}}|ConvertTo-Json -Depth 12 -Compress
   $h=@{'MCP-Protocol-Version'=$proto;'Mcp-Method'='tools/call';'Mcp-Name'=$Name}
   try{return (Invoke-RestMethod -Method Post -Uri $base -Headers $h -ContentType 'application/json' -Body $body).result.structuredContent}catch{Fail-Step 'S2V-MCP' "$Name request failed: $($_.Exception.Message)"}
 }
@@ -31,7 +31,7 @@ function Assert-Ok($r,[string]$Id,[string]$Name){
 }
 
 Write-Host "[S2V-01] PASS - Config/MCP endpoint: $base"
-$tag='spark-s2-'+[DateTime]::UtcNow.ToString('yyyyMMddHHmmssfff')
+$tag='spark-transport-'+[DateTime]::UtcNow.ToString('yyyyMMddHHmmssfff')
 $dir=$tag
 $file="$dir\sample.txt"
 $copy="$dir\copy.txt"
@@ -50,15 +50,15 @@ Assert-Ok (Call-Tool 'copy_path' @{source=$file;destination=$copy}) 'S2V-03D' 'c
 Assert-Ok (Call-Tool 'move_path' @{source=$copy;destination=$moved}) 'S2V-03E' 'move_path'
 
 Write-Host '[S2V-04] Command execution...'
-$r=Call-Tool 'run_command' @{command='cmd.exe';args=@('/d','/c','echo SPARK_S2_OK');cwd=$dir;timeoutMs=5000}
+$r=Call-Tool 'run_command' @{command='cmd.exe';args=@('/d','/c','echo SPARK_EXEC_OK');cwd=$dir;timeoutMs=5000}
 Assert-Ok $r 'S2V-04A' 'run_command'
 $stdout=[string]$r.data.stdout
-if($stdout -notmatch 'SPARK_S2_OK'){
+if($stdout -notmatch 'SPARK_EXEC_OK'){
   Write-Host "[S2V-04B] stdout=<$stdout>"
   Write-Host "[S2V-04B] stderr=<$([string]$r.data.stderr)>"
   Fail-Step 'S2V-04B' 'command stdout mismatch'
 }
-Write-Host '[S2V-04B] PASS - command stdout contains SPARK_S2_OK'
+Write-Host '[S2V-04B] PASS - command stdout contains SPARK_EXEC_OK'
 
 Write-Host '[S2V-05] Traversal negative test...'
 $r=Call-Tool 'create_file' @{path='../escape.txt';text='x'}
@@ -80,4 +80,4 @@ Write-Host '[S2V-07] Cleanup test directory via Recycle Bin...'
 $r=Call-Tool 'delete_path' @{path=$dir};Assert-Ok $r 'S2V-07' 'delete_path directory'
 
 Write-Host '[S2V-08] Reading recent operation ledger via status is available separately: SPARK.cmd status'
-Write-Host '[S2V-09] PASS - SPRINT-2 WINDOWS LOCAL VALIDATION COMPLETE'
+Write-Host '[S2V-09] PASS - TRANSPORT WINDOWS LOCAL VALIDATION COMPLETE'

@@ -36,7 +36,7 @@ test('allowedRoot accepts an array while preserving first-root relative paths', 
   await fs.writeFile(path.join(second, 'second.txt'), 'second\n', 'utf8');
 
   const configPath = path.join(f.base, 'config.json');
-  await fs.writeFile(configPath, JSON.stringify({ daemon: { allowedRoot: [f.root, second] } }), 'utf8');
+  await fs.writeFile(configPath, JSON.stringify({ transport: { allowedRoot: [f.root, second] } }), 'utf8');
   const config = loadConfig({ configPath });
 
   assert.deepEqual(config.roots, [path.resolve(f.root), path.resolve(second)]);
@@ -121,7 +121,7 @@ test('allowedRoot supports per-root R/W/X permissions', async (t) => {
   await fs.writeFile(path.join(f.root, 'read-only.txt'), 'readonly\n', 'utf8');
 
   const configPath = path.join(f.base, 'config-permissions.json');
-  await fs.writeFile(configPath, JSON.stringify({ daemon: { allowedRoot: [
+  await fs.writeFile(configPath, JSON.stringify({ transport: { allowedRoot: [
     { path: f.root, permissions: 'R' },
     { path: second, permissions: 'rwx' }
   ] } }), 'utf8');
