@@ -12,6 +12,21 @@ function Resolve-RepoRelative([string]$Value){
   return Join-Path $root $Value
 }
 
+function Start-ChatGPTApp(){
+  $running=Get-Process -Name 'ChatGPT' -ErrorAction SilentlyContinue
+  if($running){Write-Host '[S2-10] PASS - ChatGPT already running';return}
+  $app=Get-StartApps | Where-Object { $_.Name -eq 'ChatGPT' } | Select-Object -First 1
+  if(-not $app){Fail-Step 'S2-10' 'ChatGPT Windows app is not registered in Start Apps'}
+  Write-Host "[S2-10] Starting ChatGPT Windows app: $($app.AppID)"
+  Start-Process explorer.exe -ArgumentList "shell:AppsFolder\$($app.AppID)"
+  $deadline=(Get-Date).AddSeconds(10)
+  do{
+    Start-Sleep -Milliseconds 250
+    if(Get-Process -Name 'ChatGPT' -ErrorAction SilentlyContinue){Write-Host '[S2-10] PASS - ChatGPT running';return}
+  }while((Get-Date)-lt$deadline)
+  Fail-Step 'S2-10' 'ChatGPT launch was requested but no ChatGPT process appeared within 10 seconds'
+}
+
 if(-not $ConfigPath){$ConfigPath=Join-Path $root 'config\spark-transport.local.json'}
 if(-not (Test-Path $ConfigPath)){
   Write-Host '[S2-01] FAIL - local config not found.' -ForegroundColor Red
@@ -61,7 +76,7 @@ try{$r=Invoke-RestMethod -TimeoutSec 3 $health}catch{Fail-Step 'S2-04' "daemon h
 if($r.status -ne 'ok'){Fail-Step 'S2-04' 'daemon health response was not ok'}
 Write-Host "[S2-04] PASS - daemon healthy, version=$($r.version)"
 
-if($config.tunnel.enabled -eq $false){Write-Host '[S2-05] PASS - Tunnel disabled by config. Startup complete.';exit 0}
+if($config.tunnel.enabled -eq $false){Write-Host '[S2-05] PASS - Tunnel disabled by config.';Start-ChatGPTApp;Write-Host '[S2-11] PASS - Startup complete.';exit 0}
 if(-not $config.tunnel.id -or $config.tunnel.id -like 'tunnel_x*'){Fail-Step 'S2-05' 'Set tunnel.id in local config'}
 
 $keyFile=$config.tunnel.controlPlaneApiKeyFile
@@ -82,6 +97,28 @@ if($LASTEXITCODE -ne 0){Fail-Step 'S2-06' 'tunnel-client bootstrap failed'}
 $client=Join-Path $clientDir 'tunnel-client.exe'
 if(-not (Test-Path $client)){Fail-Step 'S2-06' "tunnel-client.exe not found after bootstrap: $client"}
 Write-Host "[S2-06] PASS - tunnel-client ready: $client"
+
+$existingTunnelOwned=$false
+$existingTunnelPidFile=Join-Path (Join-Path $root '.runtime') 'tunnel-client.pid'
+if(Test-Path $existingTunnelPidFile){
+  try{
+    $existingTunnelPid=[int](Get-Content $existingTunnelPidFile | Select-Object -First 1)
+    $existingTunnelProcess=Get-Process -Id $existingTunnelPid -ErrorAction Stop
+    if($existingTunnelProcess.ProcessName -eq 'tunnel-client'){$existingTunnelOwned=$true}
+  }catch{}
+}
+try{
+  $ready=Invoke-WebRequest -UseBasicParsing -TimeoutSec 1 'http://127.0.0.1:8080/readyz'
+  if($ready.Content.Trim() -eq 'ready'){
+    if(-not $existingTunnelOwned){Fail-Step 'S2-07' 'Port 8080 reports ready but is not owned by the SPARK tunnel PID file; refusing to reuse an unknown listener'}
+    Write-Host "[S2-07] PASS - Existing SPARK tunnel ready, PID=$existingTunnelPid; profile doctor skipped to avoid health-listener port collision."
+    Start-ChatGPTApp
+    Write-Host '[S2-11] PASS - Startup complete.'
+    exit 0
+  }
+}catch{
+  if($_.Exception.Message -like '[S2-07]*'){throw}
+}
 
 $profile=$config.tunnel.profile
 $runtime=Join-Path $root '.runtime';New-Item -ItemType Directory -Force $runtime|Out-Null
@@ -115,7 +152,7 @@ Write-Host '[S2-07] PASS - tunnel profile ready'
 
 try{
   $ready=Invoke-WebRequest -UseBasicParsing -TimeoutSec 1 'http://127.0.0.1:8080/readyz'
-  if($ready.Content.Trim() -eq 'ready'){Write-Host '[S2-08] PASS - Tunnel already ready.';exit 0}
+  if($ready.Content.Trim() -eq 'ready'){Write-Host '[S2-08] PASS - Tunnel already ready.';Start-ChatGPTApp;Write-Host '[S2-11] PASS - Startup complete.';exit 0}
 }catch{}
 
 Write-Host '[S2-08] Starting tunnel-client with direct CreateProcess semantics...'
@@ -145,7 +182,7 @@ do{
   }
   try{
     $ready=Invoke-WebRequest -UseBasicParsing -TimeoutSec 1 'http://127.0.0.1:8080/readyz'
-    if($ready.Content.Trim() -eq 'ready'){Write-Host "[S2-09] PASS - tunnel ready (PID $($proc.Id))";exit 0}
+    if($ready.Content.Trim() -eq 'ready'){Write-Host "[S2-09] PASS - tunnel ready (PID $($proc.Id))";Start-ChatGPTApp;Write-Host '[S2-11] PASS - Startup complete.';exit 0}
   }catch{}
 }while((Get-Date)-lt$deadline)
 try{if(-not $proc.HasExited){Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue}}catch{}

@@ -210,16 +210,25 @@ ActuatorPort
 workingDirectory != authorizationRoot
 ```
 
-0.0.1 filesystem policy는 다음을 reject한다.
+Filesystem authorization policy는 다음을 적용한다.
 
-- `..`
-- absolute/drive-qualified path
-- UNC path
-- symlink escape
-- NTFS junction escape
-- non-existing target parent-chain escape
+- `..` traversal reject
+- single-root 구성에서는 absolute/drive-qualified/UNC tool path reject
+- multi-root 구성에서는 absolute path를 허용하되 configured root 내부만 허용
+- 상대경로가 둘 이상의 Root에 실제로 존재하면 `AMBIGUOUS_ROOT_PATH`로 fail closed하고 absolute path로 명시하도록 요구
+- symlink / NTFS junction escape reject
+- non-existing target parent-chain escape reject
+- Root별 `R` / `W` / `X` capability 적용
 
-현재 single allowed root로 시작하되 future multi-root/capability policy로 확장 가능하게 유지한다.
+Root permission semantics:
+
+```text
+R = list/read/copy source
+W = create/write/modify/copy destination/move/delete
+X = run_command cwd authorization
+```
+
+문자열 Root config는 backward compatibility를 위해 `RWX`로 해석한다.
 
 ## 10. Command Execution Trust Statement
 
@@ -301,7 +310,7 @@ Default runtime/recovery/ledger state는 repository/workspace가 아니라 user-
 
 ## 14. Brain Host Cost / Quota Rule
 
-`BRAIN_HOST_COMPARISON.md`가 research source다.
+이 문서의 **Brain Host / Cost / Quota Comparison** chapter가 research source다.
 
 - Consumer/subscription Chat + official connector/MCP는 valid Brain deployment mode다.
 - Coding-product allowance, API/PAYG, local model은 별도 cost modes다.
@@ -310,7 +319,7 @@ Default runtime/recovery/ledger state는 repository/workspace가 아니라 user-
 
 ## 15. Source Architecture References
 
-`ARCH_REFERENCE_STUDY.md` 참조.
+이 문서의 **Architecture Reference Study** chapter를 참조한다.
 
 - **CatDesk** — process ownership, timeout/cancel cleanup, bounded output, Windows Job Object concept, logical tools 우선.
 - **Local Coding Agent** — working directory vs authorization separation, capability concept, missing-target canonicalization, private authority state. AGPL source 직접 복사 금지 unless license strategy accepts it.
@@ -375,12 +384,8 @@ Source/automated Small PoC acceptance는 PASS다. Live ChatGPT Secure MCP Tunnel
 
 ## 19. External References
 
-- `docs/SWE1.md`
-- `docs/SWE2.md`
-- `docs/SWE3.md`
-- `docs/ARCH_REFERENCE_STUDY.md`
-- `docs/BRAIN_HOST_COMPARISON.md`
-- `evidence/SPRINT2_TEST_REPORT.md`
+Project process/verification records are local-only under `_pArc/` (`SWE1.md`, `SWE2.md`, `SWE3.md`, `PIM3.md`). `docs/` intentionally contains only stable architecture and architecture-quality-gate material.
+
 - MCP 2026-07-28: https://blog.modelcontextprotocol.io/posts/2026-07-28/
 - CatDesk: https://github.com/Xeift/CatDesk
 - Local Coding Agent: https://github.com/LongNgn204/local-coding-agent
@@ -390,3 +395,588 @@ Source/automated Small PoC acceptance는 PASS다. Live ChatGPT Secure MCP Tunnel
 ## Baseline Handoff
 
 `0.0.1`은 CRUD + simple execution의 verified Small PoC source baseline이다. 다음 implementation Sprint는 GUI/Computer Use 또는 alternate Brain/physical adapter 중 실제 target requirement가 선택된 뒤 시작한다.
+
+## 20. Architecture Reference Study
+
+**Date:** 2026-09-12  
+**Purpose:** SPARK_Transport Sprint-2 architecture 재정립을 위한 source-level comparison  
+**Scope:** CatDesk, Local Coding Agent, ChatGPT Local Coder, Jan
+
+## 1. Executive Conclusion
+
+세 coding-agent 프로젝트는 SPARK_Transport가 다시 구현할 필요가 없는 문제를 이미 상당 부분 다루고 있다. 그러나 어느 하나도 SPARK의 target architecture를 그대로 제공하지는 않는다.
+
+가장 유용한 조합은 다음과 같다.
+
+```text
+CatDesk
+  -> process lifecycle / timeout / Windows Job Object / bounded output
+
+Local Coding Agent
+  -> permission resolver / root capability / private authority state / local dashboard
+
+ChatGPT Local Coder
+  -> structured tool result / activity stream / MCP session + admin UX
+
+Jan
+  -> future client/UI / MCP host / provider-neutral and local-model architecture
+```
+
+SPARK_Transport는 이 요소를 **Client/Transport/Core/Policy/PAL**로 분리하여 조합한다.
+
+## 2. Reproducible Source Snapshots
+
+| Project | Reviewed main commit | License |
+|---|---|---|
+| CatDesk | `41900ba851334713061053f345740c1ddcaf5283` | MIT |
+| Local Coding Agent | `95144e610ddcc3bb5a879117803907c008b1a88e` | AGPL-3.0-or-later |
+| ChatGPT Local Coder | `81a53c9c553fde3b1c3fa5b484d23c6d1d3f38b4` | MIT |
+| Jan | `6ccd6f4ad227cf5f0f6bfbb118729dfb4f3a8d32` | Apache-2.0 |
+
+## 3. Comparison Matrix
+
+| Concern | CatDesk | Local Coding Agent | ChatGPT Local Coder | SPARK decision |
+|---|---|---|---|---|
+| Model API required by local daemon | No | No | No | No |
+| ChatGPT Web/remote MCP orientation | Yes | Yes | Yes | Current client path |
+| Filesystem root policy | Canonical workspace root | Strong multi-root resolver | Current code is open/full disk | LCA concept + SPARK implementation |
+| Missing-target canonicalization | Partial/general canonical path logic | Longest-existing-ancestor canonicalization | No security boundary | Adopt LCA concept |
+| Command process tree | Strong | Managed processes | Managed processes | Adopt CatDesk pattern |
+| Windows process cleanup | Job Object | App-specific process management | native child process | Job Object target |
+| OS command sandbox | Linux bwrap; Windows native | Explicitly not OS sandbox | Open/native | Do not claim sandbox in PoC |
+| Result schema | CommandResult | rich tool results | common `{ok,tool,summary,data}` | SPARK normalized envelope |
+| User-visible local activity | TUI/widget | dashboard/audit | admin UI/activity stream | Operation Ledger |
+| Long output strategy | bounded buffers | local reports + compact handles | activity/audit + caps | bounded + future handle |
+| Approval/policy | modes/approval UX | strict/balanced/full + grants | open | future SPARK policy port |
+| Cross-platform abstraction | conditional backends | cross-platform policy | platform branches | formal PAL |
+| UI scope | TUI/widget/mascot | dashboard + desktop app | admin web UI | UI kept outside core |
+| License reuse risk | low/MIT | high for direct reuse/AGPL | low/MIT | study concepts; check reuse case-by-case |
+
+## 4. CatDesk
+
+### 4.1. Source structure observed
+
+Important files:
+
+```text
+src/command.rs
+src/process_runner.rs
+src/linux_sandbox.rs
+src/workspace_tools.rs
+src/mcp.rs
+src/server.rs
+src/state.rs
+src/change_tracking/*
+src/widget/*
+```
+
+CatDesk는 MCP transport, workspace operation, command execution, change tracking, UI/widget 영역을 별도 module로 나누고 있다. 다만 `mcp.rs`, `main.rs`, `server.rs`는 이미 상당히 커져 있어 SPARK는 같은 monolithic growth를 피해야 한다.
+
+### 4.2. Command / process lifecycle
+
+`CommandResult`는 다음을 별도로 보존한다.
+
+- stdout
+- stderr
+- success
+- exit code
+- elapsed time
+- timeout
+- stdout/stderr truncation
+
+Windows process runner는 child를 suspended state로 시작한 뒤 **Windows Job Object**에 할당하고 resume한다. Job handle이 닫히거나 timeout/cancel/drop이 발생하면 전체 process tree를 정리한다.
+
+이 pattern은 SPARK에 직접적으로 유용하다.
+
+### 4.3. Linux backend
+
+Linux에서는 `bubblewrap`을 사용하여 별도 sandbox helper를 구성한다. usable bwrap이 없으면 unconfined fallback 대신 error를 낸다.
+
+이것은 “모든 OS에 하나의 sandbox 구현”보다 **backend-specific execution policy**가 현실적이라는 근거다.
+
+### 4.4. Path / command intent
+
+Workspace path를 canonicalize하고 root escape를 거부한다.
+
+또 `ls/find/tree/rg/mv` 같은 일부 shell intent를 parse/intercept하여 logical operation으로 바꾸려는 코드가 있다.
+
+SPARK는 당장 shell parser까지 확대하지 않되, 장기적으로 “가능하면 logical CRUD tool을 우선하고 shell은 verification/build에 사용”하는 policy reference로 삼는다.
+
+### 4.5. Adopt
+
+- process-tree ownership
+- Windows Job Object
+- timeout/cancellation cleanup
+- bounded stdout/stderr
+- command result fields
+- OS/backend-specific process implementation
+- logical operation 우선
+
+### 4.6. Do not adopt blindly
+
+- UI/widget/mascot/browser feature scope
+- 큰 monolithic MCP/server module
+- Windows native command가 filesystem sandbox라는 오해
+
+## 5. Local Coding Agent
+
+### 5.1. Source structure observed
+
+핵심 source:
+
+```text
+server/permission-resolver.mjs
+server/server.mjs
+server/README.md
+desktop-app/*
+```
+
+### 5.2. Permission Resolver
+
+가장 가치 있는 reference다.
+
+Permission root preset:
+
+```text
+observe      -> filesystem read / commands deny
+edit         -> filesystem write / commands deny
+develop      -> filesystem write / commands safe
+full_control -> filesystem write / commands full
+deny
+```
+
+중요한 architectural choice:
+
+```text
+working directory != authorization roots
+```
+
+또한 non-existing target도 longest existing ancestor를 realpath한 뒤 missing tail을 붙이는 방식으로 canonicalize하여 junction/symlink escape를 막으려 한다.
+
+Temporary grant scope도:
+
+- once
+- task
+- session
+- profile
+
+로 분리한다.
+
+SPARK의 future authorization model에 좋은 reference다.
+
+### 5.3. Private authority state
+
+Approval state를 writable workspace 밖의 private state directory에 둔다. Agent가 자기 approval file을 수정해서 권한을 위조하지 못하도록 하는 설계다.
+
+SPARK의 secret/recovery/ledger state도 동일한 trust-boundary 원칙을 따라야 한다.
+
+### 5.4. Dashboard / output management
+
+MCP endpoint와 local dashboard를 별도 loopback server로 둔다.
+
+또 큰 log/report/output을 local file에 저장하고 ChatGPT에는 compact summary + handle을 보내는 구조가 있다. 이는 ChatGPT Web의 긴 tool output lag를 줄이는 실용적인 pattern이다.
+
+### 5.5. Security limit
+
+프로젝트 자체 문서가 `run_command`가 **OS sandbox가 아님**을 명시한다. Safe mode의 regex blocklist와 root-aware policy는 유용한 guardrail이지만 OS confinement와 동일하지 않다.
+
+### 5.6. Adopt conceptually
+
+- root capability model
+- working directory와 authorization 분리
+- non-existing target canonicalization
+- private approval/authority state
+- local-only status/dashboard
+- large-output indirection
+- risk policy categories
+
+### 5.7. Do not copy directly
+
+- AGPL source code 직접 복사
+- regex blocklist를 security boundary로 간주
+- all-in-one `server.mjs` 구조
+
+## 6. ChatGPT Local Coder
+
+### 6.1. Source structure observed
+
+```text
+src/tools/filesystem.ts
+src/tools/shell.ts
+src/lib/tool-result.ts
+src/lib/activity-log.ts
+src/lib/audit.ts
+src/lib/mcp-session-manager.ts
+src/lib/path-security.ts
+src/lib/permissions.ts
+public/ui/*
+```
+
+### 6.2. Result envelope
+
+모든 tool이 공통 payload를 반환한다.
+
+```text
+ok
+tool
+summary
+data
+```
+
+그리고 MCP text content와 `structuredContent`를 함께 만든다.
+
+SPARK는 이 아이디어를 확장해 `operationId`, `changed`, normalized error, duration 등을 추가한다.
+
+### 6.3. Activity stream
+
+Activity entry에 다음을 기록한다.
+
+- time
+- kind/tool/action
+- target
+- status
+- duration
+- session/client
+- summary/details
+
+이 구조는 사용자가 요구한 **AI뿐 아니라 사용자에게도 failure를 명확히 보여주는 operation ledger**의 좋은 reference다.
+
+### 6.4. Process tools
+
+단기 command와 장기 process를 분리한다.
+
+```text
+run_command
+start_process
+process_status
+process_output
+stop_process
+```
+
+Sprint-2에서는 `run_command`만 유지하되, 장기 process가 필요해지면 이 decomposition을 reference로 사용한다.
+
+### 6.5. Security baseline은 채택하지 않음
+
+현재 source는 `path-security.ts`에서 workspace를 access boundary가 아닌 default CWD로 취급하고 absolute path를 허용한다.
+
+`permissions.ts`도 현재 full machine access / any command를 명시한다.
+
+따라서 이 프로젝트는 **security reference가 아니라 result/session/admin UX reference**로만 사용한다.
+
+## 7. Jan
+
+### 7.1. SPARK와 같은 것은 아님
+
+Jan은 ChatGPT subscription message를 재사용하는 MCP bridge가 아니다.
+
+Cloud OpenAI/Anthropic provider를 쓰면 해당 provider API/key 경로를 사용한다.
+
+그러나 Jan은 local model을 자체 실행할 수 있어 **paid model API 없이도** 완전한 client/model/tool stack을 구성할 수 있다.
+
+### 7.2. Architecture relevance
+
+Jan은:
+
+- Windows/macOS/Linux desktop app
+- Tauri-based native shell
+- local models
+- MCP host
+- local OpenAI-compatible API server
+- provider/model separation
+
+을 제공한다.
+
+따라서 SPARK의 미래 custom UI 또는 provider-neutral client architecture reference로 가치가 높다.
+
+### 7.3. Local API
+
+Jan의 local server는 기본적으로 localhost에서 OpenAI-compatible REST API를 제공한다. 이는 “API”이지만 cloud billing API가 아니라 local inference interface다.
+
+### 7.4. Future SPARK implication
+
+향후 SPARK UI는 다음 두 종류의 reasoning host를 선택할 수 있다.
+
+```text
+A. ChatGPT Web/App
+   -> consumer message/subscription
+   -> Secure MCP Tunnel
+   -> SPARK_Transport
+
+B. SPARK/Jan-like local UI
+   -> local model or configured provider
+   -> local transport/MCP
+   -> SPARK_Transport
+```
+
+B에서 frontier cloud model을 직접 쓰려면 일반적으로 provider API/auth가 필요하다. 현재 architecture는 이 provider 선택을 SPARK_Transport core 밖에 둔다.
+
+## 8. SPARK Architecture Decision after Study
+
+최종 layer:
+
+```text
+Client / UX
+    |
+Transport Adapter
+    |
+Logical Operations
+    |
+Policy + Result + Ledger + Recovery
+    |
+PAL
+    |
+OS Adapter
+```
+
+### Why this is stable
+
+- ChatGPT UI가 바뀌어도 core 변경 최소화
+- Obsidian을 버려도 core 변경 없음
+- Jan/local model을 붙여도 core operation contract 유지
+- Windows 외 OS는 PAL 추가로 확장
+- GUI Computer Use는 별도 service/port로 추가 가능
+- MCP version 변경은 transport adapter 안에서 흡수 가능
+
+## 9. Small PoC Recommendation
+
+0.0.1 목표는 범위를 줄인다.
+
+### Must finish
+
+- Windows PAL
+- CRUD
+- recoverable delete
+- simple native execution
+- timeout
+- process-tree cleanup
+- bounded output
+- normalized result
+- user-visible operation ledger
+- Secure MCP Tunnel E2E
+
+### Defer
+
+- GUI Computer Use
+- alternative UI
+- Robot
+- macOS/Linux/Android
+- elevated helper
+- strong OS command sandbox
+- background process manager
+- local model/provider integration
+
+## 10. License Notes
+
+- CatDesk: MIT — source reuse 가능성이 비교적 높으나 attribution/license 조건 준수 필요.
+- Local Coding Agent: AGPL-3.0-or-later — source 직접 복사/결합은 SPARK의 라이선스 전략에 큰 영향을 줄 수 있으므로 architecture concept만 참고한다.
+- ChatGPT Local Coder: MIT.
+- Jan: Apache-2.0.
+
+실제 code reuse 전에는 dependency/derivative-work 범위를 별도 검토한다.
+
+## 11. References
+
+### CatDesk
+
+- https://github.com/Xeift/CatDesk
+- https://github.com/Xeift/CatDesk/blob/main/src/command.rs
+- https://github.com/Xeift/CatDesk/blob/main/src/process_runner.rs
+- https://github.com/Xeift/CatDesk/blob/main/src/linux_sandbox.rs
+
+### Local Coding Agent
+
+- https://github.com/LongNgn204/local-coding-agent
+- https://github.com/LongNgn204/local-coding-agent/blob/main/server/permission-resolver.mjs
+- https://github.com/LongNgn204/local-coding-agent/blob/main/server/server.mjs
+- https://github.com/LongNgn204/local-coding-agent/blob/main/SECURITY.md
+
+### ChatGPT Local Coder
+
+- https://github.com/posavr/chatgpt-local-coder
+- https://github.com/posavr/chatgpt-local-coder/blob/main/src/lib/tool-result.ts
+- https://github.com/posavr/chatgpt-local-coder/blob/main/src/lib/activity-log.ts
+- https://github.com/posavr/chatgpt-local-coder/blob/main/src/tools/shell.ts
+- https://github.com/posavr/chatgpt-local-coder/blob/main/src/lib/path-security.ts
+- https://github.com/posavr/chatgpt-local-coder/blob/main/src/lib/permissions.ts
+
+### Jan
+
+- https://github.com/janhq/jan
+- https://www.jan.ai/docs/desktop
+- https://www.jan.ai/docs/desktop/mcp
+- https://www.jan.ai/docs/desktop/api-server
+- https://www.jan.ai/docs/agent/providers
+
+## 21. Brain Host / Cost / Quota Comparison
+
+**Date:** 2026-09-12  
+**Scope:** API/Codex/Work 대신 subscription/chat allowance를 SPARK Brain으로 사용할 수 있는지 검토
+
+## 1. CatDesk의 `3,000 messages/week`는 어디서 왔는가
+
+CatDesk README의 현재 문구는 다음 근거를 명시한다.
+
+- CatDesk는 `ChatGPT Chat + CatDesk` usage를 **3,000 messages/week**라고 표기한다.
+- 같은 README에서 이 숫자의 source를 **GPT-5.5 ChatGPT Help Center의 2026-05-19 archived page**로 연결한다.
+- CatDesk README 스스로 **GPT-5.6은 현재 한도가 unknown**이라고 적고, 단지 개발자가 아직 limit에 도달하지 않았다고 설명한다.
+
+Source:
+
+- CatDesk README: https://github.com/Xeift/CatDesk/blob/main/README.md
+- CatDesk가 인용한 archived OpenAI GPT-5.5 page: https://web.archive.org/web/20260519111010/https://help.openai.com/en/articles/11909943-gpt-55-in-chatgpt
+- Current OpenAI GPT-5.6 Help: https://help.openai.com/en/articles/20001354-gpt-56-in-chatgpt
+
+### Architecture interpretation
+
+`3,000/week`를 현재 SPARK constant나 guaranteed GPT-5.6 quota로 사용하면 안 된다. 그것은 **historical GPT-5.5 Chat allowance**다.
+
+따라서 SPARK는 다음을 구분한다.
+
+```text
+Historical observed/documented allowance
+!=
+Current provider contract
+```
+
+Current GPT-5.6 limits는 plan/model/workspace setting에 따라 달라지며 OpenAI가 현재 Help Center에서 plan-dependent allowance로 설명한다. Brain Gateway는 quota를 hard-code하지 않는다.
+
+## 2. 왜 기존 cost comparison에서 이 항목이 빠졌는가
+
+기존 비교가 Work/Codex/API allowance와 token/credit cost를 중심으로 정리되면서 **consumer Chat message allowance + MCP**라는 별도의 execution route를 비교축으로 넣지 않았다.
+
+SPARK 관점에서는 이 축이 중요하다.
+
+```text
+A. Consumer Chat allowance + MCP tools
+B. Coding product allowance (Work/Codex/Claude Code)
+C. Pay-as-you-go API
+D. Local model
+```
+
+앞으로 cost comparison은 이 네 경로를 별도로 비교한다.
+
+## 3. Brain Host comparison
+
+| Brain Host | Subscription/chat allowance로 SPARK tool 사용 | MCP/connector path | Limit form | 0.0.1 |
+|---|---|---|---|---|
+| ChatGPT | **Yes, current proven path** | Custom MCP/App + Secure MCP Tunnel | Plan/model dependent; old GPT-5.5 3,000/week는 historical | Implemented/current |
+| Claude.ai | **Yes, technically viable** | Custom remote MCP connector | Variable usage; 5-hour session reset + weekly cap | Architecture only |
+| Claude Max 5x/20x | **Yes, strong candidate** | Same custom remote MCP | 5x/20x Pro session usage, 5-hour reset + weekly cap | Architecture only |
+| Gemini Apps | Chat subscription usage exists | Comparable web-chat custom MCP route **not verified in this study** | Compute-based; refreshes every 5h until weekly limit | Do not implement |
+| Jan + local model | API fee not required for local inference | Local MCP host | Local compute/resource limit | Future |
+| Direct provider API | Yes | API | Pay per usage/tokens | SPARK daemon does not require it |
+
+## 4. Claude viability
+
+### 4.1. Custom MCP connector
+
+Anthropic documents custom connectors using **remote MCP** for Claude, Cowork and Claude Desktop on Free, Pro, Max, Team and Enterprise plans. Pro/Max individual users can add a custom connector in Claude's connector settings.
+
+Important network difference from current OpenAI setup:
+
+- Claude remote custom connector requests originate from Anthropic cloud.
+- The MCP endpoint therefore must be reachable from Anthropic's infrastructure.
+- Claude Desktop also has a separate local MCP mechanism, but that is not the same as claude.ai remote connectors.
+
+Source: https://support.claude.com/en/articles/11175166-get-started-with-custom-connectors-using-remote-mcp
+
+### 4.2. Usage capacity
+
+Claude Pro does **not** publish one fixed message number comparable to historical `3,000/week`. Anthropic states that usable messages vary with:
+
+- message length
+- attached files
+- conversation length
+- model/feature
+- tool usage
+- effort level
+
+Pro session allowance resets every five hours and also has a weekly allowance across models.
+
+Source: https://support.claude.com/en/articles/8325606-what-is-the-pro-plan
+
+Claude Max is more interesting for SPARK:
+
+- Max 5x: five times Pro usage per session
+- Max 20x: twenty times Pro usage per session
+- five-hour session reset
+- weekly cap still applies
+
+Source: https://support.claude.com/en/articles/11049741-what-is-the-max-plan
+
+### 4.3. Practical conclusion
+
+Claude can support the same architectural pattern:
+
+```text
+Claude subscription chat
+    -> Remote MCP Connector
+    -> SPARK Brain Gateway
+    -> Agent Core
+    -> Body Port
+```
+
+This can avoid direct API billing **while included subscription usage remains available**. However, unlike CatDesk's historical GPT-5.5 example, the current Claude allowance is compute/context-sensitive, not a fixed high message count. Long tool logs and long chats consume more allowance, so SPARK's bounded output, short handoff, operation ledger, and new-chat workflow remain important.
+
+Anthropic also offers optional usage credits after included limits; those are extra consumption charges and are therefore a separate cost mode, not the free-in-subscription path.
+
+## 5. Gemini Apps
+
+Google currently describes Gemini Apps limits as **compute-based**, affected by prompt complexity, model/features and chat length. Limits refresh every five hours until a weekly limit is reached.
+
+Source: https://support.google.com/gemini/answer/16275805
+
+This is conceptually similar to Claude's variable quota, but this study did **not** verify an official Gemini web-chat custom remote MCP path equivalent to ChatGPT/Claude. Therefore Gemini remains a Brain Host research item rather than an implementation target.
+
+## 6. SPARK architecture rule
+
+Brain quota/cost belongs to the **Brain Gateway / deployment policy**, not Agent Core.
+
+```text
+Brain Host
+  ├─ subscription allowance
+  ├─ connector/MCP availability
+  ├─ quota/reset policy
+  └─ optional paid overage
+        ↓
+Brain Gateway
+        ↓
+SPARK Agent Core
+        ↓
+Body Port / PAL
+```
+
+Agent Core SHALL NOT:
+
+- assume a fixed message quota;
+- depend on one provider's billing model;
+- contain consumer login/session scraping;
+- bypass provider usage limits;
+- require provider API keys for its own local execution.
+
+## 7. Recommendation
+
+For the near term:
+
+1. **ChatGPT + MCP remains the tested primary Brain Host.**
+2. **Claude Max/Pro + remote MCP is the strongest second Brain Host candidate** because Anthropic officially supports custom remote MCP on consumer plans.
+3. Claude implementation is intentionally deferred until a target account/environment is available for real E2E testing.
+4. Gemini remains research-only until the comparable chat-to-custom-MCP path is verified.
+5. Local-model/Jan path remains a future no-cloud-API alternative.
+
+## 22. PAL Transparency Invariant
+
+SPARK file operations must preserve logical-to-physical transparency.
+
+1. A logical `move_path` is one rename/move operation. It must not create an additional backup or sibling artifact.
+2. If the destination already exists, `move_path` fails with `ALREADY_EXISTS` and leaves source and destination unchanged.
+3. Recovery for `write_file` and `modify_file` belongs to the physical file PAL and private runtime state, not the user's workspace.
+4. User-workspace backup, scratch, or temporary files are forbidden unless the user explicitly requests them as artifacts.
+5. File CRUD/rename intents must use FileService tools rather than `run_command`.
+6. Tests must assert that write/modify/move create no unexpected workspace entries.
+
+## Audit finding
+
+The historical audit found workspace-visible scratch/recovery artifacts in logical tool code. That issue has since been refactored behind the file PAL. Current `write_file` and `modify_file` return private PAL recovery metadata, and regression tests verify that no workspace-visible backup/temp sidecars are created. `move_path` retains direct rename semantics and fails closed on destination collision.
+
+PAL transparency is therefore part of the current verified baseline rather than an open gate.

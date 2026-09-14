@@ -14,6 +14,7 @@ import {
 
 const MODULE_DIR = path.dirname(fileURLToPath(import.meta.url));
 export const PROJECT_ROOT = path.resolve(MODULE_DIR, '..');
+const ROOT_PERMISSION_ORDER = Object.freeze(['R', 'W', 'X']);
 
 function positiveInteger(value, fallback, name) {
   if (value === undefined || value === null || value === '') return fallback;
@@ -40,22 +41,44 @@ function defaultPrivateStateDir() {
   return path.join(base, 'SPARK_Transport');
 }
 
+function normalizeRootPermissions(value, index) {
+  if (value === undefined || value === null || value === '') return 'RWX';
+  if (typeof value !== 'string') throw new Error(`daemon.allowedRoot[${index}].permissions must be a string containing R, W and/or X`);
+  const compact = value.toUpperCase().replace(/[\s,]+/g, '');
+  if (!compact || /[^RWX]/.test(compact)) {
+    throw new Error(`daemon.allowedRoot[${index}].permissions must contain only R, W and/or X`);
+  }
+  return ROOT_PERMISSION_ORDER.filter((permission) => compact.includes(permission)).join('');
+}
+
 function normalizeAllowedRoots(value) {
   const raw = Array.isArray(value) ? value : [value];
   if (raw.length === 0) throw new Error('daemon.allowedRoot must contain at least one path');
-  const roots = raw.map((entry, index) => {
-    if (typeof entry !== 'string' || entry.trim() === '') {
-      throw new Error(`daemon.allowedRoot[${index}] must be a non-empty string path`);
+
+  const rootPolicies = raw.map((entry, index) => {
+    if (typeof entry === 'string') {
+      if (entry.trim() === '') throw new Error(`daemon.allowedRoot[${index}] must be a non-empty string path`);
+      return { path: path.resolve(entry), permissions: 'RWX' };
     }
-    return path.resolve(entry);
+    if (!entry || typeof entry !== 'object' || Array.isArray(entry)) {
+      throw new Error(`daemon.allowedRoot[${index}] must be a path string or { path, permissions } object`);
+    }
+    if (typeof entry.path !== 'string' || entry.path.trim() === '') {
+      throw new Error(`daemon.allowedRoot[${index}].path must be a non-empty string path`);
+    }
+    return {
+      path: path.resolve(entry.path),
+      permissions: normalizeRootPermissions(entry.permissions, index),
+    };
   });
+
   const seen = new Set();
-  for (const root of roots) {
-    const key = process.platform === 'win32' ? root.toLowerCase() : root;
-    if (seen.has(key)) throw new Error(`daemon.allowedRoot contains a duplicate path: ${root}`);
+  for (const rootPolicy of rootPolicies) {
+    const key = process.platform === 'win32' ? rootPolicy.path.toLowerCase() : rootPolicy.path;
+    if (seen.has(key)) throw new Error(`daemon.allowedRoot contains a duplicate path: ${rootPolicy.path}`);
     seen.add(key);
   }
-  return roots;
+  return rootPolicies;
 }
 
 export function loadConfig(overrides = {}) {
@@ -69,12 +92,14 @@ export function loadConfig(overrides = {}) {
   if (!configuredRoots || (Array.isArray(configuredRoots) && configuredRoots.length === 0)) {
     throw new Error('allowed root is required: set daemon.allowedRoot in config or SPARK_TRANSPORT_ROOT');
   }
-  const roots = normalizeAllowedRoots(configuredRoots);
+  const rootPolicies = normalizeAllowedRoots(configuredRoots);
+  const roots = rootPolicies.map((entry) => entry.path);
 
   return {
     configPath,
     root: roots[0],
     roots,
+    rootPolicies,
     host: overrides.host ?? env.SPARK_TRANSPORT_HOST ?? daemon.host ?? DEFAULT_HOST,
     port: positiveInteger(overrides.port ?? env.SPARK_TRANSPORT_PORT ?? daemon.port, DEFAULT_PORT, 'port'),
     mcpPath: overrides.mcpPath ?? env.SPARK_TRANSPORT_MCP_PATH ?? daemon.mcpPath ?? DEFAULT_MCP_PATH,

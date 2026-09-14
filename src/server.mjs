@@ -16,7 +16,7 @@ async function readJsonBody(req){let size=0;const chunks=[];for await(const chun
 
 export async function createSparkTransportServer(config,injections={}){
   if(!['127.0.0.1','localhost','::1'].includes(config.host))throw new Error('server must bind to a loopback host');
-  const policy=await createPathPolicy(config.roots??config.root);
+  const policy=await createPathPolicy(config.rootPolicies??config.roots??config.root);
   const {ledger:injectedLedger,runner:injectedRunner,...toolInjections}=injections;
   const ledger=injectedLedger??createOperationLedger({stateDir:config.stateDir});
   const runner=injectedRunner??((options)=>runProcess({...options,maxOutputBytes:config.maxCommandOutputBytes}));

@@ -8,8 +8,8 @@ const pathProp = (description, def) => ({ type: 'string', description, ...(def =
 const textProp = (description) => ({ type: 'string', description });
 
 export const TOOL_DEFINITIONS = Object.freeze([
-  { name:'list_directory', title:'List directory', description:'List entries inside the configured allowed root. Paths are relative to the allowed root.', inputSchema:{type:'object',properties:{path:pathProp('Relative directory path inside the allowed root.','.')},additionalProperties:false}, annotations:{readOnlyHint:true,idempotentHint:true,openWorldHint:false}},
-  { name:'read_file', title:'Read file', description:'Read a UTF-8 text file inside the configured allowed root.', inputSchema:{type:'object',properties:{path:pathProp('Relative file path.')},required:['path'],additionalProperties:false}, annotations:{readOnlyHint:true,idempotentHint:true,openWorldHint:false}},
+  { name:'list_directory', title:'List directory', description:'List entries inside configured allowed roots. Relative paths are resolved by root policy; if the same relative path exists in multiple roots the call fails as ambiguous. With multiple roots, an absolute path is accepted only inside one configured root.', inputSchema:{type:'object',properties:{path:pathProp('Directory path. Use an absolute path to disambiguate duplicate relative paths across roots.','.')},additionalProperties:false}, annotations:{readOnlyHint:true,idempotentHint:true,openWorldHint:false}},
+  { name:'read_file', title:'Read file', description:'Read a UTF-8 text file inside configured allowed roots. Duplicate relative paths across roots are rejected as ambiguous; use an absolute path to select the intended root.', inputSchema:{type:'object',properties:{path:pathProp('File path. Absolute paths are allowed only when multiple roots are configured and the path is inside one of them.')} ,required:['path'],additionalProperties:false}, annotations:{readOnlyHint:true,idempotentHint:true,openWorldHint:false}},
   { name:'create_file', title:'Create file', description:'Create one new UTF-8 file. Fails if the target already exists. No companion backup or temporary file is created.', inputSchema:{type:'object',properties:{path:pathProp('Relative file path.'),text:textProp('UTF-8 file content.')},required:['path','text'],additionalProperties:false}, annotations:{readOnlyHint:false,destructiveHint:false,idempotentHint:false,openWorldHint:false}},
   { name:'write_file', title:'Write file', description:'Replace one existing UTF-8 file. Recovery is handled privately by the file PAL; workspace-visible backup/temp sidecars are forbidden.', inputSchema:{type:'object',properties:{path:pathProp('Relative file path.'),text:textProp('Replacement UTF-8 content.')},required:['path','text'],additionalProperties:false}, annotations:{readOnlyHint:false,destructiveHint:true,idempotentHint:true,openWorldHint:false}},
   { name:'modify_file', title:'Modify file', description:'Replace exactly one occurrence of search text. Recovery is handled privately by the file PAL; workspace-visible backup/temp sidecars are forbidden.', inputSchema:{type:'object',properties:{path:pathProp('Relative file path.'),search:textProp('Exact text to find once.'),replace:textProp('Replacement text.')},required:['path','search','replace'],additionalProperties:false}, annotations:{readOnlyHint:false,destructiveHint:true,idempotentHint:false,openWorldHint:false}},
@@ -108,8 +108,8 @@ export function createToolRuntime({policy,maxReadBytes,stateDir,commandTimeoutMs
   async function copyPath(args){
     if(!validateOnlyKeys(args,new Set(['source','destination']))||typeof args.source!=='string'||typeof args.destination!=='string')return{ok:false,error:{code:'INVALID_ARGUMENTS',message:'copy_path requires source and destination'}};
     try{
-      const s=await policy.resolveMutationEntry(args.source);
-      const d=await policy.resolveForCreate(args.destination);
+      const s=await policy.resolveMutationEntry(args.source,'R');
+      const d=await policy.resolveForCreate(args.destination,{permission:'W'});
       await files.copyPath(s.absolutePath,d.absolutePath,s.stat.isDirectory());
       return{ok:true,source:s.displayPath,destination:d.displayPath,type:s.stat.isDirectory()?'directory':'file'};
     }catch(error){return{ok:false,error:errorShape(error)};}

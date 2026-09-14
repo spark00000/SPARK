@@ -72,3 +72,68 @@ test('single-root compatibility still rejects absolute tool paths', async (t) =>
   const policy = await createPathPolicy(f.root);
   await assert.rejects(() => policy.resolveFile(path.join(f.root, 'hello.txt')), (error) => error.code === 'ABSOLUTE_PATH_NOT_ALLOWED');
 });
+
+test('duplicate relative paths across roots are rejected until an absolute path disambiguates them', async (t) => {
+  const f = await makeFixture();
+  t.after(f.cleanup);
+  const second = path.join(f.base, 'second-root');
+  await fs.mkdir(second, { recursive: true });
+  await fs.writeFile(path.join(f.root, 'PIM3.md'), 'primary\n', 'utf8');
+  await fs.writeFile(path.join(second, 'PIM3.md'), 'secondary\n', 'utf8');
+
+  const policy = await createPathPolicy([f.root, second]);
+  await assert.rejects(() => policy.resolveFile('PIM3.md'), (error) => error.code === 'AMBIGUOUS_ROOT_PATH');
+  await assert.rejects(() => policy.resolveMutationEntry('PIM3.md'), (error) => error.code === 'AMBIGUOUS_ROOT_PATH');
+
+  const primary = await policy.resolveFile(path.join(f.root, 'PIM3.md'));
+  const secondary = await policy.resolveFile(path.join(second, 'PIM3.md'));
+  assert.equal(await fs.readFile(primary.absolutePath, 'utf8'), 'primary\n');
+  assert.equal(await fs.readFile(secondary.absolutePath, 'utf8'), 'secondary\n');
+});
+
+test('allowedRoot supports per-root R/W/X permissions', async (t) => {
+  const f = await makeFixture();
+  t.after(f.cleanup);
+  const second = path.join(f.base, 'second-root');
+  const stateDir = path.join(f.base, 'state');
+  await fs.mkdir(second, { recursive: true });
+  await fs.writeFile(path.join(f.root, 'read-only.txt'), 'readonly\n', 'utf8');
+
+  const configPath = path.join(f.base, 'config-permissions.json');
+  await fs.writeFile(configPath, JSON.stringify({ daemon: { allowedRoot: [
+    { path: f.root, permissions: 'R' },
+    { path: second, permissions: 'rwx' }
+  ] } }), 'utf8');
+  const config = loadConfig({ configPath });
+  assert.deepEqual(config.rootPolicies, [
+    { path: path.resolve(f.root), permissions: 'R' },
+    { path: path.resolve(second), permissions: 'RWX' }
+  ]);
+
+  const policy = await createPathPolicy(config.rootPolicies);
+  const runtime = createToolRuntime({
+    policy,
+    maxReadBytes: 1024 * 1024,
+    stateDir,
+    commandTimeoutMs: 1000,
+    recycleBin: true,
+    recycle: async () => {},
+    runner: async () => ({ ok: true, stdout: 'ran', stderr: '', exitCode: 0, signal: null, durationMs: 1 }),
+  });
+
+  let result = await runtime.readFile({ path: path.join(f.root, 'read-only.txt') });
+  assert.equal(result.ok, true);
+
+  result = await runtime.createFile({ path: path.join(f.root, 'blocked.txt'), text: 'blocked' });
+  assert.equal(result.ok, false);
+  assert.equal(result.error.code, 'ROOT_PERMISSION_DENIED');
+
+  result = await runtime.runCommand({ command: process.execPath, args: ['--version'], cwd: f.root });
+  assert.equal(result.ok, false);
+  assert.equal(result.error.code, 'ROOT_PERMISSION_DENIED');
+
+  result = await runtime.createFile({ path: path.join(second, 'allowed.txt'), text: 'allowed' });
+  assert.equal(result.ok, true);
+  result = await runtime.runCommand({ command: process.execPath, args: ['--version'], cwd: second });
+  assert.equal(result.ok, true);
+});
