@@ -364,18 +364,21 @@ Deployment invariants:
 - user/device/SPARK instance마다 distinct `tunnel_id`를 사용한다. 동일 tunnel을 서로 다른 local SPARK instance가 공유하지 않는다.
 - MCP app display name은 authorization identity가 아니다. 이름이 같거나 workspace에 app이 노출되어 있어도 다른 사용자의 local SPARK authority를 얻어서는 안 된다.
 - 각 local SPARK instance는 **instance-specific credential**을 검증한다. 0.0.1 source에는 `transport.auth.mode=bearer`와 `bearerTokenSha256` 기반 local MCP ingress 검증이 구현되었으며, raw token은 local config에 저장하지 않고 SHA-256 digest만 보관한다. `Authorization: Bearer <token>`이 없거나 digest가 일치하지 않으면 MCP path는 `401`로 fail closed한다. 현재 release default는 backward compatibility 때문에 `none`이며, ChatGPT `Access token / API key` E2E와 installer provisioning을 통과한 뒤 0.0.1 deployment default를 확정한다.
-- static credential을 사용하면 중앙 OAuth/auth server는 runtime dependency가 아니다. Credential은 instance마다 달라야 하고, local secret store에 저장하며, rotate/revoke 가능해야 한다. `no scheduled expiry`는 허용할 수 있으나 "절대 폐기 불가" credential로 설계하지 않는다.
-- OAuth/OIDC가 필요한 경우 ChatGPT의 app connection/authentication machinery가 OAuth client 역할을 하고 provider-issued credential을 연결 상태로 관리한다. SPARK가 ChatGPT 내부에 별도 auth code를 삽입하는 구조가 아니다. Authorization/token endpoint는 external IdP가 제공하고, MCP payload path는 계속 user-specific Secure MCP Tunnel을 통해 local SPARK로 직접 간다.
-- OAuth `sub` 또는 static token 어느 방식을 쓰든 local SPARK는 **자기 instance에 허용된 principal/credential만** 승인한다. Workspace membership 또는 app visibility만으로 authorization하지 않는다.
+- 0.0.1 인증은 중앙 OAuth/auth server 없이 **per-instance static bearer/access token(API key)** 을 사용한다. Credential은 instance마다 달라야 하고, local SPARK는 raw token이 아니라 SHA-256 digest만 저장하며, manual rotate/revoke를 지원한다. `no scheduled expiry`는 허용하지만 분실/노출 시 폐기할 수 없는 credential로 설계하지 않는다.
+- 사용자 입력 password는 기본 인증 방식으로 사용하지 않는다. 사람이 정한 password보다 installer가 생성한 high-entropy random token을 사용해 brute-force/재사용 위험을 줄인다.
+- OAuth/OIDC는 0.0.1 범위에서 구현하지 않는다. 팀/계정 lifecycle, self-service onboarding 또는 중앙 revocation 같은 요구가 실제로 생길 때 후속 버전에서 재검토한다.
+- local SPARK는 **자기 instance에 허용된 credential만** 승인한다. Workspace membership 또는 app visibility만으로 authorization하지 않는다.
 - 중앙 SPARK relay/router를 0.0.1 data plane에 두지 않는다. Filesystem data, command output, media/binary payload가 SPARK-operated cloud relay를 통과하지 않아야 한다.
+- 동일 PC의 다른 hostile local process가 loopback SPARK endpoint를 호출하거나 local credential을 탈취하는 문제는 별도 host-local threat model이며 **TBD**다. 0.0.1 multi-user isolation 범위에서는 remote/workspace user 간 cross-access 차단을 우선한다.
 
 Auth alternatives for 0.0.1:
 
 | Method | Central always-on auth service | Runtime network dependency | 5-user 0.0.1 disposition |
 |---|---:|---:|---|
-| Per-instance bearer/access token/API key | No | None beyond Secure MCP Tunnel | **Preferred minimum** if ChatGPT app auth mode supports it |
-| OAuth/OIDC with hosted IdP | Yes for login/refresh | Existing token can be validated locally only if token format/key distribution permits | Optional; use when per-user account lifecycle is needed |
-| Custom SSH-style public-key challenge | Would require custom protocol/client support | Depends on design | Not default; ChatGPT app auth does not currently provide a generic SSH challenge UI |
+| Per-instance bearer/access token/API key | No | None beyond Secure MCP Tunnel | **Selected for 0.0.1** |
+| Human password | No | None | Rejected as default; use generated high-entropy token instead |
+| OAuth/OIDC with hosted IdP | Yes for login/refresh | Depends on provider/token model | **Deferred beyond 0.0.1** |
+| Custom SSH-style public-key challenge | Would require custom protocol/client support | Depends on design | Deferred; current ChatGPT custom-app auth does not expose a generic SSH challenge flow |
 | Central SPARK payload relay | Yes | Every tool call | **Rejected for 0.0.1** |
 
 Claude Desktop provides a useful contrast: its Desktop Extensions can install and run local MCP servers directly on the user machine. If ChatGPT later provides an equivalent supported local-MCP hosting surface, SPARK SHOULD prefer that provider-native local path and remove the Secure MCP Tunnel/auth indirection where practical rather than preserving the intermediate topology for compatibility alone.
@@ -400,6 +403,39 @@ Consequences:
 - Under the current ChatGPT Secure MCP Tunnel architecture, bytes returned from a local SPARK MCP tool still traverse the OpenAI tunnel path. SPARK therefore must not assume that a local file download is zero-cost or direct merely because the source file is local.
 
 0.0.1 does not add unrestricted binary transfer merely to make every local file downloadable. A future file-transfer capability requires an explicit size/streaming/download design and acceptance test on the actual Brain Host client.
+
+### 10.9. Timeout, Watchdog and Progress Semantics
+
+Current `run_command` is synchronous and bounded. The default command timeout is 30 seconds; an explicit `timeoutMs` may override it. On timeout SPARK terminates the process tree and returns `COMMAND_TIMEOUT` with `retryable=true`. A timed-out process is **not** left running in the background.
+
+A user-facing "continue this same command?" interaction cannot safely preserve the same process with the current synchronous `run_command` contract. ChatGPT cannot ask the user a new question until the pending MCP tool call returns. Therefore the current safe behavior is:
+
+```text
+run_command
+  -> hard timeout
+  -> terminate process tree
+  -> return COMMAND_TIMEOUT
+  -> Brain/UX asks whether to retry with a larger timeout
+```
+
+A retry starts a new process; it is not process continuation. Commands with non-idempotent side effects must not be blindly retried.
+
+True long-running continuation/progress requires the deferred managed ProcessService lifecycle:
+
+```text
+start_process
+process_status
+process_output
+stop_process
+```
+
+That design can return a process handle immediately, allow the Brain/UX to report progress or ask the user whether to continue, and explicitly stop the managed process when requested. SPARK SHALL NOT emulate this by timing out the HTTP response while leaving an unmanaged child running.
+
+The current HTTP MCP dispatcher has no generic per-request cancellation watchdog around every FileService/ProcessService operation, and the operation ledger records completion/failure after the underlying tool returns rather than exposing an in-flight heartbeat. A generic request timeout that merely returns an error while an uncancellable mutation continues would create false completion semantics and is therefore not adopted.
+
+OpenAI Secure MCP Tunnel independently bounds MCP transport connection lifetime (currently default 10 minutes) and supports forwarded MCP progress notifications. That transport TTL is an upper transport bound, not SPARK's user-facing operation watchdog. SPARK's current JSON-only HTTP MCP implementation does not stream progress notifications for an in-flight tool call.
+
+Operational UX rule for ChatGPT-driven SPARK work: long multi-step work SHOULD emit visible milestone reports between tool calls (for example `Step 1/4 complete`). A true periodic heartbeat cannot be emitted while one blocking MCP call has not returned; bounded tool calls and the future managed ProcessService are the mechanisms for eliminating that blind interval.
 
 ## 11. Recoverable Delete
 
@@ -550,6 +586,8 @@ Architecture-only / deferred:
 | ADR-025 | 0.0.1 intermediate multi-user deployment는 user/device/SPARK instance별 distinct Secure MCP Tunnel + local instance authorization을 사용하고 중앙 SPARK payload relay를 두지 않음 |
 | ADR-026 | 약 5명 규모의 0.0.1에서는 per-instance high-entropy bearer/access token을 최소 인증 방식으로 채택한다. Local SPARK는 raw token 대신 SHA-256 digest를 저장하고 `Authorization: Bearer`를 fail-closed 검증한다. OAuth/OIDC는 account lifecycle이 필요할 때 선택적으로 사용 |
 | ADR-027 | text/binary 구분은 heuristic이 아니라 operation contract로 정의한다. `read_file`은 strict UTF-8 text이며 arbitrary binary/file download는 별도 bounded MCP resource/blob/download capability로 설계 |
+| ADR-028 | 0.0.1 multi-user 인증은 중앙 OAuth/relay 없이 per-instance high-entropy static bearer/API key를 사용하고, OAuth/OIDC와 same-PC hostile-process isolation은 후속 scope로 defer |
+| ADR-029 | synchronous `run_command` timeout은 process tree를 종료하고 `COMMAND_TIMEOUT`을 반환한다. 동일 process의 진짜 continue/heartbeat는 managed asynchronous ProcessService가 필요하며, 응답만 timeout시키고 unmanaged child를 남기는 구현은 금지 |
 
 ## 18. 0.0.0 Verification Status
 
