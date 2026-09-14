@@ -21,3 +21,19 @@ if($chatProcesses){
 }else{
   Write-Host 'not-running'
 }
+
+Write-Host '[S2-STATUS-04] Integrated theme runtime'
+$activePath=Join-Path $root 'theme\.runtime\active.json'
+if(-not (Test-Path -LiteralPath $activePath -PathType Leaf)){
+  Write-Host 'not-active'
+}else{
+  try{
+    $active=Get-Content -LiteralPath $activePath -Raw | ConvertFrom-Json
+    $watcher=Get-CimInstance Win32_Process -Filter "ProcessId=$($active.watcherPid)" -ErrorAction SilentlyContinue
+    $watcherOk=($watcher -and $watcher.CommandLine -and $watcher.CommandLine.IndexOf('theme\src\watch.mjs',[System.StringComparison]::OrdinalIgnoreCase) -ge 0)
+    $cdpOk=$false
+    try{$targets=Invoke-RestMethod -Uri "http://127.0.0.1:$($active.port)/json/list" -TimeoutSec 1;$cdpOk=@($targets).Count -gt 0}catch{}
+    if($watcherOk -and $cdpOk){Write-Host "active (theme=$($active.themeSelection), CDP=127.0.0.1:$($active.port), watcherPid=$($active.watcherPid))"}
+    else{Write-Host "degraded (theme=$($active.themeSelection), watcher=$watcherOk, cdp=$cdpOk)"}
+  }catch{Write-Host "invalid-state: $($_.Exception.Message)"}
+}

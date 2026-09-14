@@ -12,7 +12,7 @@ function Resolve-RepoRelative([string]$Value){
   return Join-Path $root $Value
 }
 
-function Start-ChatGPTApp(){
+function Start-NormalChatGPTApp(){
   $running=Get-Process -Name 'ChatGPT' -ErrorAction SilentlyContinue
   if($running){Write-Host '[S2-10] PASS - ChatGPT already running';return}
   $app=Get-StartApps | Where-Object { $_.Name -eq 'ChatGPT' } | Select-Object -First 1
@@ -25,6 +25,37 @@ function Start-ChatGPTApp(){
     if(Get-Process -Name 'ChatGPT' -ErrorAction SilentlyContinue){Write-Host '[S2-10] PASS - ChatGPT running';return}
   }while((Get-Date)-lt$deadline)
   Fail-Step 'S2-10' 'ChatGPT launch was requested but no ChatGPT process appeared within 10 seconds'
+}
+
+function Test-ThemeRuntime(){
+  $activePath=Join-Path $root 'theme\.runtime\active.json'
+  if(-not (Test-Path -LiteralPath $activePath -PathType Leaf)){return $false}
+  try{
+    $active=Get-Content -LiteralPath $activePath -Raw | ConvertFrom-Json
+    if(-not $active.port -or -not $active.watcherPid){return $false}
+    $watcher=Get-CimInstance Win32_Process -Filter "ProcessId=$($active.watcherPid)" -ErrorAction SilentlyContinue
+    if(-not $watcher -or -not $watcher.CommandLine -or $watcher.CommandLine.IndexOf('theme\src\watch.mjs',[System.StringComparison]::OrdinalIgnoreCase) -lt 0){return $false}
+    $targets=Invoke-RestMethod -Uri "http://127.0.0.1:$($active.port)/json/list" -TimeoutSec 1
+    return (@($targets).Count -gt 0 -and [bool](Get-Process -Name 'ChatGPT' -ErrorAction SilentlyContinue))
+  }catch{return $false}
+}
+
+function Start-ChatGPTExperience(){
+  $themeEnabled=$true
+  if($config.PSObject.Properties.Name -contains 'theme' -and $config.theme -and $config.theme.enabled -eq $false){$themeEnabled=$false}
+  if(-not $themeEnabled){Start-NormalChatGPTApp;return}
+
+  if(Test-ThemeRuntime){Write-Host '[S2-10] PASS - ChatGPT theme runtime already active';return}
+
+  $selection='dark-red'
+  if($config.PSObject.Properties.Name -contains 'theme' -and $config.theme.selection){$selection=[string]$config.theme.selection}
+  $launcher=Join-Path $root 'theme\scripts\start-chatgpt-theme-changer.ps1'
+  if(-not (Test-Path -LiteralPath $launcher -PathType Leaf)){Fail-Step 'S2-10' "Theme launcher not found: $launcher"}
+  Write-Host "[S2-10] Starting ChatGPT with integrated theme: $selection"
+  & powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File $launcher -Theme $selection
+  if($LASTEXITCODE -ne 0){Fail-Step 'S2-10' 'integrated ChatGPT theme launcher failed'}
+  if(-not (Test-ThemeRuntime)){Fail-Step 'S2-10' 'theme launcher returned success but runtime validation failed'}
+  Write-Host '[S2-10] PASS - ChatGPT + theme runtime active'
 }
 
 function Show-TunnelHealthDiagnostics(){
@@ -99,7 +130,7 @@ try{$r=Invoke-RestMethod -TimeoutSec 3 $health}catch{Fail-Step 'S2-04' "daemon h
 if($r.status -ne 'ok'){Fail-Step 'S2-04' 'daemon health response was not ok'}
 Write-Host "[S2-04] PASS - daemon healthy, version=$($r.version)"
 
-if($config.tunnel.enabled -eq $false){Write-Host '[S2-05] PASS - Tunnel disabled by config.';Start-ChatGPTApp;Write-Host '[S2-11] PASS - Startup complete.';exit 0}
+if($config.tunnel.enabled -eq $false){Write-Host '[S2-05] PASS - Tunnel disabled by config.';Start-ChatGPTExperience;Write-Host '[S2-11] PASS - Startup complete.';exit 0}
 if(-not $config.tunnel.id -or $config.tunnel.id -like 'tunnel_x*'){Fail-Step 'S2-05' 'Set tunnel.id in local config'}
 
 $keyFile=$config.tunnel.controlPlaneApiKeyFile
@@ -135,7 +166,7 @@ try{
   if($ready.Content.Trim() -eq 'ready'){
     if(-not $existingTunnelOwned){Fail-Step 'S2-07' 'Port 8080 reports ready but is not owned by the SPARK tunnel PID file; refusing to reuse an unknown listener'}
     Write-Host "[S2-07] PASS - Existing SPARK tunnel ready, PID=$existingTunnelPid; profile doctor skipped to avoid health-listener port collision."
-    Start-ChatGPTApp
+    Start-ChatGPTExperience
     Write-Host '[S2-11] PASS - Startup complete.'
     exit 0
   }
@@ -175,7 +206,7 @@ Write-Host '[S2-07] PASS - tunnel profile ready'
 
 try{
   $ready=Invoke-WebRequest -UseBasicParsing -TimeoutSec 1 'http://127.0.0.1:8080/readyz'
-  if($ready.Content.Trim() -eq 'ready'){Write-Host '[S2-08] PASS - Tunnel already ready.';Start-ChatGPTApp;Write-Host '[S2-11] PASS - Startup complete.';exit 0}
+  if($ready.Content.Trim() -eq 'ready'){Write-Host '[S2-08] PASS - Tunnel already ready.';Start-ChatGPTExperience;Write-Host '[S2-11] PASS - Startup complete.';exit 0}
 }catch{}
 
 Write-Host '[S2-08] Starting tunnel-client with direct CreateProcess semantics...'
@@ -207,7 +238,7 @@ do{
   }
   try{
     $ready=Invoke-WebRequest -UseBasicParsing -TimeoutSec 1 'http://127.0.0.1:8080/readyz'
-    if($ready.Content.Trim() -eq 'ready'){Write-Host "[S2-09] PASS - tunnel ready (PID $($proc.Id))";Start-ChatGPTApp;Write-Host '[S2-11] PASS - Startup complete.';exit 0}
+    if($ready.Content.Trim() -eq 'ready'){Write-Host "[S2-09] PASS - tunnel ready (PID $($proc.Id))";Start-ChatGPTExperience;Write-Host '[S2-11] PASS - Startup complete.';exit 0}
   }catch{}
 }while((Get-Date)-lt$deadline)
 

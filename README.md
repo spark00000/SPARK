@@ -160,7 +160,18 @@ SPARK_Transport.cmd stop
 SPARK_Transport.cmd validate
 ```
 
-`start`는 daemon health와 tunnel readiness를 확인한 뒤 등록된 ChatGPT Windows app을 시작합니다. 이미 실행 중인 구성요소는 재사용합니다. `status`는 daemon, tunnel, ChatGPT process 상태를 각각 표시합니다. `stop`은 tunnel-client, daemon, ChatGPT를 순서대로 종료합니다. `restart`는 stop 후 start를 실행합니다.
+`start`는 daemon health와 tunnel readiness를 확인한 뒤 통합 Theme runtime을 통해 ChatGPT Windows app을 CDP 모드로 시작하고 theme을 적용합니다. 이미 정상 실행 중인 daemon/tunnel/theme 구성요소는 재사용합니다. `status`는 daemon, tunnel, ChatGPT process와 Theme watcher/CDP 상태를 각각 표시합니다. `stop`은 tunnel-client, daemon, Theme watcher, ChatGPT를 순서대로 종료합니다. `restart`는 stop 후 start를 실행합니다.
+
+기본 Theme 설정:
+
+```json
+"theme": {
+  "enabled": true,
+  "selection": "dark-red"
+}
+```
+
+Theme 기능을 사용하지 않으려면 `theme.enabled`를 `false`로 설정합니다. 통합 Theme 구현은 `theme/` 아래에 있으며 `E:/SRC/SPARK_Theme` 원본 프로젝트와 독립적으로 실행됩니다. 원본 Theme 프로젝트는 그대로 유지됩니다.
 
 ## 7. Delete / Recycle Bin Policy
 

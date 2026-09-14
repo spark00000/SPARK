@@ -40,7 +40,7 @@ exit /b %ERRORLEVEL%
 
 :usage
 echo SPARK_Transport [start ^| restart ^| status ^| stop ^| validate]
-echo No argument = start daemon + tunnel + ChatGPT Windows app.
+echo No argument = start daemon + tunnel + ChatGPT Windows app + integrated theme.
 exit /b 0
 
 :usage_error
