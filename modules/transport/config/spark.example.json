@@ -1,0 +1,35 @@
+{
+  "transport": {
+    "allowedRoot": [
+      {
+        "path": "C:/SPARK/workspace",
+        "permissions": "RWX"
+      },
+      {
+        "path": "C:/SPARK/reference",
+        "permissions": "R"
+      }
+    ],
+    "host": "127.0.0.1",
+    "port": 8765,
+    "mcpPath": "/mcp",
+    "healthPath": "/health",
+    "maxReadBytes": 1048576,
+    "commandTimeoutMs": 30000,
+    "stateDir": ".runtime",
+    "recycleBin": true
+  },
+  "chatgptUi": {
+    "enabled": true,
+    "theme": "dark-red"
+  },
+  "tunnel": {
+    "enabled": true,
+    "id": "tunnel_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "profile": "spark",
+    "localMcpUrl": "http://127.0.0.1:8765/mcp",
+    "clientVersion": "v0.0.14",
+    "clientDir": "modules/transport/tools/tunnel-client",
+    "controlPlaneApiKeyFile": ".runtime/secrets/control-plane-api-key.txt"
+  }
+}
