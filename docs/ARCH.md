@@ -1,7 +1,7 @@
 # ARCH — SPARK (Symbiotic Personal AI Robotic Keeper)
 
 **Version:** 0.0.0
-**Status:** Accepted Small PoC Architecture Baseline
+**Status:** Accepted Architecture Baseline
 **Architecture review:** 2026-09-12 / 1.23
 
 ## 1. Purpose and Product Boundary
@@ -232,7 +232,7 @@ X = run_command cwd authorization
 
 ## 10. Command Execution Trust Statement
 
-0.0.0 `run_command`는 **trusted local, non-elevated Small PoC capability**다.
+0.0.0 `run_command`는 **trusted local, non-elevated capability**다.
 
 - explicit executable + argv
 - `shell:false` by default
@@ -386,7 +386,7 @@ GitHub Actions Node 24 matrix에서 final version commit `5014a3e816c4ee6af57dd6
 - Ubuntu: PASS
 - Windows: PASS
 
-Source/automated Small PoC acceptance는 PASS다. Live ChatGPT Secure MCP Tunnel mutation/exec E2E는 배포된 local Transport service을 0.0.0로 갱신한 뒤 별도 deployment acceptance로 수행한다. Independent Architecture Peer review 역시 별도 process gate이며 이 문서의 author self-check와 동일시하지 않는다.
+Source/automated architecture baseline acceptance는 PASS다. Live ChatGPT Secure MCP Tunnel mutation/exec E2E는 배포된 local Transport service을 0.0.0로 갱신한 뒤 별도 deployment acceptance로 수행한다. Independent Architecture Peer review 역시 별도 process gate이며 이 문서의 author self-check와 동일시하지 않는다.
 
 ## 19. External References
 
@@ -743,33 +743,17 @@ OS Adapter
 - GUI Computer Use는 별도 service/port로 추가 가능
 - MCP version 변경은 transport adapter 안에서 흡수 가능
 
-## 9. Small PoC Recommendation
+## 9. Architectural Implications
 
-0.0.0 목표는 범위를 줄인다.
+Reference study의 결과는 SPARK의 layer boundary와 extension rule을 다음과 같이 강화한다.
 
-### Must finish
-
-- Windows PAL
-- CRUD
-- recoverable delete
-- simple native execution
-- timeout
-- process-tree cleanup
-- bounded output
-- normalized result
-- user-visible operation ledger
-- Secure MCP Tunnel E2E
-
-### Defer
-
-- GUI Computer Use
-- alternative UI
-- Robot
-- macOS/Linux/Android
-- elevated helper
-- strong OS command sandbox
-- background process manager
-- local model/provider integration
+- filesystem/process implementation은 Agent Core에 직접 결합하지 않고 PAL/Body Port 뒤에 둔다.
+- `working directory`와 authorization root를 분리하고 path policy는 Core 공통 contract로 유지한다.
+- process ownership, timeout, descendant cleanup, bounded output은 ProcessService의 platform adapter 책임으로 유지한다.
+- result normalization, ledger, recovery는 Brain Host나 UI와 독립적인 Core service로 유지한다.
+- ChatGPT UI/Obsidian/향후 desktop UI는 Human UX Plane에 두고 execution authorization boundary로 사용하지 않는다.
+- MCP, provider connector, subscription/session 차이는 Brain Gateway에서 흡수하고 Agent Core domain model에는 노출하지 않는다.
+- Windows 외 OS 및 physical device 확장은 기존 Core contract를 변경하기보다 PAL/Body Port adapter를 추가하는 방식으로 수행한다.
 
 ## 10. License Notes
 

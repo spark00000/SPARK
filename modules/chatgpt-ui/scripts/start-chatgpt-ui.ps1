@@ -281,10 +281,12 @@ if ($ValidateOnly) {
     $validateOutput
     return
 }
+Write-Host "[UI-01] PASS - Theme config validated: $Theme"
 
 $package = Resolve-ChatGptPackage
 $InstallRoot = [System.IO.Path]::GetFullPath($package.InstallLocation)
 $Executable = Resolve-ChatGptExecutable -InstallRoot $InstallRoot
+Write-Host "[UI-02] PASS - ChatGPT package resolved: $($package.PackageFullName)"
 $baseline = [ordered]@{
     schemaVersion = 2
     capturedAt = [DateTime]::UtcNow.ToString('o')
@@ -317,6 +319,7 @@ try {
     ) -PassThru
 
     $targets = Wait-CdpEndpoint -Port $port -TimeoutSeconds 60
+    Write-Host "[UI-03] PASS - ChatGPT CDP ready: 127.0.0.1:$port"
     $active = [ordered]@{
         schemaVersion = 2
         launchedAt = [DateTime]::UtcNow.ToString('o')
@@ -342,6 +345,7 @@ try {
     if ($LASTEXITCODE -ne 0) {
         throw "Theme status failed: $($statusOutput -join [Environment]::NewLine)"
     }
+    Write-Host "[UI-04] PASS - Theme applied and verified: $Theme"
 
     $watcher = Start-Process -FilePath $NodePath -ArgumentList @(
         $WatcherPath,
@@ -353,6 +357,7 @@ try {
     ) -WindowStyle Hidden -PassThru -RedirectStandardOutput (Join-Path $RuntimeDirectory 'watcher-out.log') -RedirectStandardError (Join-Path $RuntimeDirectory 'watcher-error.log')
     $active['watcherPid'] = $watcher.Id
     Write-JsonFile -Path $ActivePath -Value $active
+    Write-Host "[UI-05] PASS - UI watcher started, PID=$($watcher.Id)"
 
     $result = [ordered]@{
         success = $true
@@ -364,7 +369,7 @@ try {
         status = ($statusOutput -join [Environment]::NewLine)
     }
     Write-JsonFile -Path $LastRunPath -Value $result
-    $result | ConvertTo-Json -Depth 16
+    Write-Host '[UI-06] PASS - ChatGPT UI startup complete'
 }
 catch {
     $failure = [ordered]@{

@@ -62,20 +62,27 @@ function Show-TunnelHealthDiagnostics(){
   Write-Host '[S2-09] ---- tunnel health diagnostics ----'
   $uris=@(
     'http://127.0.0.1:8080/healthz',
-    'http://127.0.0.1:8080/readyz',
-    'http://127.0.0.1:8080/health?details=true',
-    'http://127.0.0.1:8080/health/mcp',
-    'http://127.0.0.1:8080/health/control-plane'
+    'http://127.0.0.1:8080/readyz'
   )
   foreach($uri in $uris){
     try{
       $response=Invoke-WebRequest -UseBasicParsing -TimeoutSec 3 $uri
-      Write-Host "[S2-09] $uri -> HTTP $($response.StatusCode)"
-      if($response.Content){Write-Host $response.Content.Trim()}
+      Write-Host "[S2-09] $uri -> HTTP $($response.StatusCode) $($response.Content.Trim())"
     }catch{
       $status='request-failed'
       try{if($_.Exception.Response){$status='HTTP '+[int]$_.Exception.Response.StatusCode}}catch{}
       Write-Host "[S2-09] $uri -> $status : $($_.Exception.Message)"
+    }
+  }
+
+  $healthPidFile=Join-Path (Join-Path $root '.runtime') 'tunnel-client.pid'
+  if($client -and (Test-Path -LiteralPath $client -PathType Leaf)){
+    Write-Host '[S2-09] tunnel-client control-plane health:'
+    try{
+      & $client health --port 8080 --pid-file $healthPidFile --require-control-plane-poll --json
+      if($LASTEXITCODE -ne 0){Write-Host "[S2-09] tunnel-client health exitCode=$LASTEXITCODE"}
+    }catch{
+      Write-Host "[S2-09] tunnel-client health failed: $($_.Exception.Message)"
     }
   }
   Write-Host '[S2-09] ---- end tunnel health diagnostics ----'
@@ -114,9 +121,11 @@ $transportLog=Join-Path $transportStateDir 'spark.log'
 Write-Host '[S2-03] Starting Transport service...'
 Push-Location $root
 try {
-  & npm run transport:start
-  if($LASTEXITCODE -ne 0){
+  $transportStartOutput=@(& npm run --silent transport:start 2>&1)
+  $transportStartExit=$LASTEXITCODE
+  if($transportStartExit -ne 0){
     Write-Host '[S2-03] FAIL - Transport start returned a non-zero exit code.' -ForegroundColor Red
+    if($transportStartOutput){$transportStartOutput | ForEach-Object { Write-Host "[S2-03] $_" }}
     Write-Host "[S2-03] Transport log: $transportLog"
     if(Test-Path $transportLog){
       Write-Host '[S2-03] ---- Transport log tail ----'
