@@ -39,10 +39,10 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\validate-w
 exit /b %ERRORLEVEL%
 
 :usage
-echo SPARK_Transport [start ^| restart ^| status ^| stop ^| validate]
+echo SPARK [start ^| restart ^| status ^| stop ^| validate]
 echo No argument = start daemon + tunnel + ChatGPT Windows app + integrated theme.
 exit /b 0
 
 :usage_error
-echo SPARK_Transport [start ^| restart ^| status ^| stop ^| validate]
+echo SPARK [start ^| restart ^| status ^| stop ^| validate]
 exit /b 2

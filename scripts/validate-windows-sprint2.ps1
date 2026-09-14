@@ -7,7 +7,7 @@ function Fail-Step([string]$Id,[string]$Message){
   throw "[$Id] $Message"
 }
 
-if(-not $ConfigPath){$ConfigPath=Join-Path $root 'config\spark-transport.local.json'}
+if(-not $ConfigPath){$ConfigPath=Join-Path $root 'config\spark.local.json'}
 if(-not (Test-Path $ConfigPath)){Fail-Step 'S2V-01' 'local config not found'}
 try{$config=Get-Content -Raw $ConfigPath | ConvertFrom-Json}catch{Fail-Step 'S2V-01' "invalid JSON in local config: $($_.Exception.Message)"}
 $base="http://$($config.daemon.host):$($config.daemon.port)$($config.daemon.mcpPath)"
@@ -75,5 +75,5 @@ Write-Host "[S2V-06B] PASS - Recycle Bin item found: $unique"
 Write-Host '[S2V-07] Cleanup test directory via Recycle Bin...'
 $r=Call-Tool 'delete_path' @{path=$dir};Assert-Ok $r 'S2V-07' 'delete_path directory'
 
-Write-Host '[S2V-08] Reading recent operation ledger via status is available separately: SPARK_Transport.cmd status'
+Write-Host '[S2V-08] Reading recent operation ledger via status is available separately: SPARK.cmd status'
 Write-Host '[S2V-09] PASS - SPRINT-2 WINDOWS LOCAL VALIDATION COMPLETE'

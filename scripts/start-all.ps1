@@ -28,13 +28,13 @@ function Start-NormalChatGPTApp(){
 }
 
 function Test-ThemeRuntime(){
-  $activePath=Join-Path $root 'theme\.runtime\active.json'
+  $activePath=Join-Path $root 'modules\theme\.runtime\active.json'
   if(-not (Test-Path -LiteralPath $activePath -PathType Leaf)){return $false}
   try{
     $active=Get-Content -LiteralPath $activePath -Raw | ConvertFrom-Json
     if(-not $active.port -or -not $active.watcherPid){return $false}
     $watcher=Get-CimInstance Win32_Process -Filter "ProcessId=$($active.watcherPid)" -ErrorAction SilentlyContinue
-    if(-not $watcher -or -not $watcher.CommandLine -or $watcher.CommandLine.IndexOf('theme\src\watch.mjs',[System.StringComparison]::OrdinalIgnoreCase) -lt 0){return $false}
+    if(-not $watcher -or -not $watcher.CommandLine -or $watcher.CommandLine.IndexOf('modules\theme\src\watch.mjs',[System.StringComparison]::OrdinalIgnoreCase) -lt 0){return $false}
     $targets=Invoke-RestMethod -Uri "http://127.0.0.1:$($active.port)/json/list" -TimeoutSec 1
     return (@($targets).Count -gt 0 -and [bool](Get-Process -Name 'ChatGPT' -ErrorAction SilentlyContinue))
   }catch{return $false}
@@ -49,7 +49,7 @@ function Start-ChatGPTExperience(){
 
   $selection='dark-red'
   if($config.PSObject.Properties.Name -contains 'theme' -and $config.theme.selection){$selection=[string]$config.theme.selection}
-  $launcher=Join-Path $root 'theme\scripts\start-chatgpt-theme-changer.ps1'
+  $launcher=Join-Path $root 'modules\theme\scripts\start-chatgpt-theme-changer.ps1'
   if(-not (Test-Path -LiteralPath $launcher -PathType Leaf)){Fail-Step 'S2-10' "Theme launcher not found: $launcher"}
   Write-Host "[S2-10] Starting ChatGPT with integrated theme: $selection"
   & powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File $launcher -Theme $selection
@@ -81,14 +81,14 @@ function Show-TunnelHealthDiagnostics(){
   Write-Host '[S2-09] ---- end tunnel health diagnostics ----'
 }
 
-if(-not $ConfigPath){$ConfigPath=Join-Path $root 'config\spark-transport.local.json'}
+if(-not $ConfigPath){$ConfigPath=Join-Path $root 'config\spark.local.json'}
 if(-not (Test-Path $ConfigPath)){
   Write-Host '[S2-01] FAIL - local config not found.' -ForegroundColor Red
-  Write-Host '         Copy config\spark-transport.example.json to config\spark-transport.local.json and edit allowedRoot/tunnel.id.'
+  Write-Host '         Copy config\spark.example.json to config\spark.local.json and edit allowedRoot/tunnel.id.'
   exit 2
 }
 $ConfigPath=(Resolve-Path $ConfigPath).Path
-$env:SPARK_TRANSPORT_CONFIG=$ConfigPath
+$env:SPARK_CONFIG=$ConfigPath
 try{$config=Get-Content -Raw $ConfigPath | ConvertFrom-Json}catch{Fail-Step 'S2-01' "invalid JSON in local config: $($_.Exception.Message)"}
 Write-Host "[S2-01] PASS - Config loaded: $ConfigPath"
 
@@ -103,9 +103,9 @@ if($config.daemon.stateDir){
   $privateBase=$env:LOCALAPPDATA
   if(-not $privateBase){$privateBase=$env:APPDATA}
   if(-not $privateBase){$privateBase=$env:USERPROFILE}
-  $daemonStateDir=Join-Path $privateBase 'SPARK_Transport'
+  $daemonStateDir=Join-Path $privateBase 'SPARK'
 }
-$daemonLog=Join-Path $daemonStateDir 'spark-transport.log'
+$daemonLog=Join-Path $daemonStateDir 'spark.log'
 
 Write-Host '[S2-03] Starting MCP daemon...'
 Push-Location $root
@@ -244,6 +244,6 @@ do{
 
 Show-TunnelHealthDiagnostics
 if(-not $proc.HasExited){
-  Write-Host "[S2-09] INFO - tunnel-client remains running as PID $($proc.Id) so readiness diagnostics are preserved. Run SPARK_Transport.cmd stop to clean it up."
+  Write-Host "[S2-09] INFO - tunnel-client remains running as PID $($proc.Id) so readiness diagnostics are preserved. Run SPARK.cmd stop to clean it up."
 }
 Fail-Step 'S2-09' "tunnel-client did not become ready within $readyTimeoutSeconds seconds"

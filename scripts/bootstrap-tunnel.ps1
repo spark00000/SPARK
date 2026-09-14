@@ -9,7 +9,7 @@ $tag = $Version
 $name = "tunnel-client-$Version-windows-amd64.zip"
 $base = "https://github.com/openai/tunnel-client/releases/download/$tag"
 $zip = Join-Path $env:TEMP $name
-$sums = Join-Path $env:TEMP "SPARK_Transport-SHA256SUMS-$Version.txt"
+$sums = Join-Path $env:TEMP "SPARK-SHA256SUMS-$Version.txt"
 Write-Host "[S2-TUN-02] Downloading full OpenAI tunnel-client: $name"
 & curl.exe -fL "$base/$name" -o $zip
 if ($LASTEXITCODE -ne 0) { throw "tunnel-client download failed" }
@@ -21,7 +21,7 @@ $expected = ($line -split '\s+')[0].ToLowerInvariant()
 $actual = (Get-FileHash -Algorithm SHA256 $zip).Hash.ToLowerInvariant()
 if ($expected -ne $actual) { throw "SHA256 mismatch: expected=$expected actual=$actual" }
 Write-Host "[S2-TUN-03] SHA256 verified: $actual"
-$extract = Join-Path $env:TEMP "SPARK_Transport-tunnel-$Version"
+$extract = Join-Path $env:TEMP "SPARK-tunnel-$Version"
 Remove-Item -Recurse -Force $extract -ErrorAction SilentlyContinue
 Expand-Archive -Force $zip $extract
 $found = Get-ChildItem -Path $extract -Recurse -Filter 'tunnel-client.exe' | Select-Object -First 1

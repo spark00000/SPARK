@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { loadConfig } from './config.mjs';
 import { DEFAULT_LEDGER_STATUS_LIMIT } from './constants.mjs';
 import { createOperationLedger } from './ledger.mjs';
-import { createSparkTransportServer, ensureStateDir } from './server.mjs';
+import { createSparkServer, ensureStateDir } from './server.mjs';
 
 const SELF=fileURLToPath(import.meta.url);
 function print(v){process.stdout.write(`${JSON.stringify(v)}\n`);}
@@ -17,9 +17,9 @@ async function serve(){
   const config=loadConfig();
   const state=await ensureStateDir(config);
   const existing=await readPid(state.pidFile);
-  if(existing&&existing!==process.pid&&processExists(existing))throw new Error(`SPARK_Transport already appears to be running as PID ${existing}`);
+  if(existing&&existing!==process.pid&&processExists(existing))throw new Error(`SPARK already appears to be running as PID ${existing}`);
   await fsp.writeFile(state.pidFile,`${process.pid}\n`,'utf8');
-  const runtime=await createSparkTransportServer(config);
+  const runtime=await createSparkServer(config);
   const address=await runtime.listen();
   print({status:'started',pid:process.pid,host:config.host,port:address.port,mcp:config.mcpPath,config:config.configPath});
   let closing=false;
@@ -40,7 +40,7 @@ async function start(){
   fs.closeSync(logFd);
   const deadline=Date.now()+5000;
   while(Date.now()<deadline){const info=await health(config,500);const pid=await readPid(state.pidFile);if(info&&pid){print({status:'started',pid,healthy:true,host:config.host,port:config.port});return;}await new Promise(r=>setTimeout(r,100));}
-  throw new Error(`SPARK_Transport did not become healthy; inspect ${state.logFile}`);
+  throw new Error(`SPARK did not become healthy; inspect ${state.logFile}`);
 }
 
 async function status(){
