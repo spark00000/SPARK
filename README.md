@@ -181,6 +181,8 @@ ChatGPT UI         : active
 
 Tunnel이 ready가 아니면 먼저 `SPARK.cmd status`와 `.runtime/tunnel-doctor.log`를 확인합니다. 새 tunnel은 생성 직후 약 25–30초의 activation 시간이 필요할 수 있습니다.
 
+`start`는 ready 응답만으로 기존 tunnel-client를 재사용하지 않습니다. 현재 config의 `tunnel.id`, generated profile의 `tunnel_id`, PID/runtime identity state와 profile SHA-256이 모두 일치하고 Control Plane poll까지 성공한 경우에만 기존 process를 재사용합니다. ID/profile mismatch가 발견되면 기존 profile을 `.runtime/tunnel-profile-backups/`에 hash 검증된 recovery copy로 보존한 뒤 현재 config 기준으로 profile을 재생성하고 tunnel-client를 다시 시작합니다.
+
 ### Step 6 — Local validation
 
 ```cmd
@@ -276,6 +278,7 @@ SPARK.cmd validate
 ├─ spark.log           # Transport log
 ├─ spark.pid
 ├─ tunnel-client.pid
+├─ tunnel-runtime.json # active tunnel ID/profile hash/PID identity state
 └─ tunnel-doctor.log   # tunnel doctor 실행 시 생성
 ```
 

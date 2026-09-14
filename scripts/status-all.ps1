@@ -11,11 +11,56 @@ Write-Host '[S2-STATUS-01] Transport service'
 Push-Location $root
 try{& npm run transport:status}catch{}finally{Pop-Location}
 
-Write-Host '[S2-STATUS-02] Tunnel readiness'
+Write-Host '[S2-STATUS-02] Tunnel readiness / identity'
+$config=$null
+if(Test-Path -LiteralPath $ConfigPath -PathType Leaf){
+  try{$config=Get-Content -LiteralPath $ConfigPath -Raw | ConvertFrom-Json}catch{}
+}
+$ready=$false
 try{
   $r=Invoke-WebRequest -UseBasicParsing -TimeoutSec 2 'http://127.0.0.1:8080/readyz'
-  if($r.Content.Trim() -eq 'ready'){Write-Host 'ready'}else{Write-Host $r.Content.Trim()}
-}catch{Write-Host 'not-ready'}
+  $ready=($r.Content.Trim() -eq 'ready')
+}catch{}
+if(-not $ready){
+  Write-Host 'not-ready'
+}elseif(-not $config -or -not $config.tunnel -or $config.tunnel.enabled -eq $false){
+  Write-Host 'ready (identity=unverified: tunnel config unavailable/disabled)'
+}else{
+  $runtime=Join-Path $root '.runtime'
+  $profileDir=Join-Path $runtime 'tunnel-profiles'
+  $profilePath=Join-Path $profileDir ([string]$config.tunnel.profile + '.yaml')
+  $runtimeStatePath=Join-Path $runtime 'tunnel-runtime.json'
+  $pidPath=Join-Path $runtime 'tunnel-client.pid'
+  $profileTunnelId=$null
+  $profileHash=$null
+  if(Test-Path -LiteralPath $profilePath -PathType Leaf){
+    $match=[regex]::Match((Get-Content -LiteralPath $profilePath -Raw),'(?m)^\s*tunnel_id:\s*"?([^"\r\n#]+)"?\s*$')
+    if($match.Success){$profileTunnelId=$match.Groups[1].Value.Trim()}
+    $profileHash=(Get-FileHash -LiteralPath $profilePath -Algorithm SHA256).Hash.ToLowerInvariant()
+  }
+  $runtimeState=$null
+  if(Test-Path -LiteralPath $runtimeStatePath -PathType Leaf){try{$runtimeState=Get-Content -LiteralPath $runtimeStatePath -Raw | ConvertFrom-Json}catch{}}
+  $tunnelPid=$null
+  $processOk=$false
+  if(Test-Path -LiteralPath $pidPath -PathType Leaf){
+    try{$tunnelPid=[int](Get-Content -LiteralPath $pidPath | Select-Object -First 1);$p=Get-Process -Id $tunnelPid -ErrorAction Stop;$processOk=($p.ProcessName -eq 'tunnel-client')}catch{}
+  }
+  $identityOk=($processOk -and $runtimeState -and $profileTunnelId -and $profileHash -and [int]$runtimeState.pid -eq $tunnelPid -and [string]$runtimeState.tunnelId -eq [string]$config.tunnel.id -and [string]$runtimeState.profilePath -ieq [string]$profilePath -and [string]$runtimeState.profileSha256 -eq [string]$profileHash -and [string]$profileTunnelId -eq [string]$config.tunnel.id)
+  if($identityOk){
+    $controlPlane='unverified'
+    $clientDir=[string]$config.tunnel.clientDir
+    if(-not [System.IO.Path]::IsPathRooted($clientDir)){$clientDir=Join-Path $root $clientDir}
+    $client=Join-Path $clientDir 'tunnel-client.exe'
+    if(Test-Path -LiteralPath $client -PathType Leaf){
+      try{$healthOutput=& $client health --port 8080 --require-control-plane-poll --json 2>$null;if($LASTEXITCODE -eq 0){$healthJson=($healthOutput -join [Environment]::NewLine)|ConvertFrom-Json;if($healthJson.result -eq 'ok' -and $healthJson.control_plane_poll.ok -eq $true){$controlPlane='ok'}}}catch{}
+    }
+    Write-Host "ready (identity=verified, tunnelId=$($config.tunnel.id), control-plane=$controlPlane)"
+  }else{
+    $runtimeTunnelId=if($runtimeState){[string]$runtimeState.tunnelId}else{'<missing>'}
+    if(-not $profileTunnelId){$profileTunnelId='<missing>'}
+    Write-Host "ready (IDENTITY-MISMATCH: config=$($config.tunnel.id), profile=$profileTunnelId, runtime=$runtimeTunnelId, processOwned=$processOk)"
+  }
+}
 
 Write-Host '[S2-STATUS-03] ChatGPT Windows app'
 $chatProcesses=Get-Process -Name 'ChatGPT' -ErrorAction SilentlyContinue

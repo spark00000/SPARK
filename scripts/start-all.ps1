@@ -156,47 +156,120 @@ $client=Join-Path $clientDir 'tunnel-client.exe'
 if(-not (Test-Path $client)){Fail-Step 'S2-06' "tunnel-client.exe not found after bootstrap: $client"}
 Write-Host "[S2-06] PASS - tunnel-client ready: $client"
 
-$existingTunnelOwned=$false
-$existingTunnelPidFile=Join-Path (Join-Path $root '.runtime') 'tunnel-client.pid'
-if(Test-Path $existingTunnelPidFile){
-  try{
-    $existingTunnelPid=[int](Get-Content $existingTunnelPidFile | Select-Object -First 1)
-    $existingTunnelProcess=Get-Process -Id $existingTunnelPid -ErrorAction Stop
-    if($existingTunnelProcess.ProcessName -eq 'tunnel-client'){$existingTunnelOwned=$true}
-  }catch{}
-}
-try{
-  $ready=Invoke-WebRequest -UseBasicParsing -TimeoutSec 1 'http://127.0.0.1:8080/readyz'
-  if($ready.Content.Trim() -eq 'ready'){
-    if(-not $existingTunnelOwned){Fail-Step 'S2-07' 'Port 8080 reports ready but is not owned by the SPARK tunnel PID file; refusing to reuse an unknown listener'}
-    Write-Host "[S2-07] PASS - Existing SPARK tunnel ready, PID=$existingTunnelPid; profile doctor skipped to avoid health-listener port collision."
-    Start-ChatGPTExperience
-    Write-Host '[S2-11] PASS - Startup complete.'
-    exit 0
-  }
-}catch{
-  if($_.Exception.Message.StartsWith('[S2-07]')){throw}
-}
-
 $profile=$config.tunnel.profile
 $runtime=Join-Path $root '.runtime';New-Item -ItemType Directory -Force $runtime|Out-Null
 $profileDir=Join-Path $runtime 'tunnel-profiles';New-Item -ItemType Directory -Force $profileDir|Out-Null
 $profilePath=Join-Path $profileDir ($profile + '.yaml')
+$runtimeStatePath=Join-Path $runtime 'tunnel-runtime.json'
+$existingTunnelPidFile=Join-Path $runtime 'tunnel-client.pid'
+
+function Get-TunnelProfileId([string]$Path){
+  if(-not (Test-Path -LiteralPath $Path -PathType Leaf)){return $null}
+  $match=[regex]::Match((Get-Content -LiteralPath $Path -Raw),'(?m)^\s*tunnel_id:\s*"?([^"\r\n#]+)"?\s*$')
+  if(-not $match.Success){return $null}
+  return $match.Groups[1].Value.Trim()
+}
+
+function Get-TunnelProfileHash([string]$Path){
+  if(-not (Test-Path -LiteralPath $Path -PathType Leaf)){return $null}
+  return (Get-FileHash -LiteralPath $Path -Algorithm SHA256).Hash.ToLowerInvariant()
+}
+
+function Backup-TunnelProfile([string]$Reason){
+  $backupDir=Join-Path $runtime 'tunnel-profile-backups';New-Item -ItemType Directory -Force $backupDir|Out-Null
+  $stamp=Get-Date -Format 'yyyyMMdd-HHmmss'
+  $backupPath=Join-Path $backupDir ($profile + '-' + $stamp + '.yaml')
+  Copy-Item -LiteralPath $profilePath -Destination $backupPath -Force
+  if(-not (Test-Path -LiteralPath $backupPath -PathType Leaf)){Fail-Step 'S2-07' 'failed to create tunnel profile recovery backup'}
+  if((Get-TunnelProfileHash $profilePath) -ne (Get-TunnelProfileHash $backupPath)){Fail-Step 'S2-07' 'tunnel profile recovery backup hash mismatch'}
+  Write-Host "[S2-07] $Reason; backup verified: $backupPath"
+}
+
+function Stop-OwnedTunnel([int]$TunnelPid,[string]$Reason){
+  Write-Host "[S2-07] $Reason; stopping SPARK-owned tunnel-client PID=$TunnelPid"
+  try{Stop-Process -Id $TunnelPid -Force -ErrorAction Stop}catch{Fail-Step 'S2-07' "failed to stop SPARK-owned tunnel-client PID=$TunnelPid : $($_.Exception.Message)"}
+  $deadline=(Get-Date).AddSeconds(10)
+  while((Get-Process -Id $TunnelPid -ErrorAction SilentlyContinue) -and (Get-Date)-lt$deadline){Start-Sleep -Milliseconds 200}
+  if(Get-Process -Id $TunnelPid -ErrorAction SilentlyContinue){Fail-Step 'S2-07' "SPARK-owned tunnel-client PID=$TunnelPid did not stop within 10 seconds"}
+  Remove-Item -LiteralPath $existingTunnelPidFile -Force -ErrorAction SilentlyContinue
+  Remove-Item -LiteralPath $runtimeStatePath -Force -ErrorAction SilentlyContinue
+}
+
+function Test-TunnelControlPlanePoll(){
+  try{
+    $healthOutput=& $client health --port 8080 --require-control-plane-poll --json 2>$null
+    if($LASTEXITCODE -ne 0){return $false}
+    $healthJson=($healthOutput -join [Environment]::NewLine) | ConvertFrom-Json
+    return ($healthJson.result -eq 'ok' -and $healthJson.control_plane_poll.ok -eq $true)
+  }catch{return $false}
+}
+
+$existingTunnelOwned=$false
+$existingTunnelPid=$null
+$existingTunnelProcess=$null
+if(Test-Path -LiteralPath $existingTunnelPidFile -PathType Leaf){
+  try{
+    $existingTunnelPid=[int](Get-Content -LiteralPath $existingTunnelPidFile | Select-Object -First 1)
+    $existingTunnelProcess=Get-Process -Id $existingTunnelPid -ErrorAction Stop
+    if($existingTunnelProcess.ProcessName -eq 'tunnel-client'){$existingTunnelOwned=$true}
+  }catch{}
+}
+
+$listenerReady=$false
+try{
+  $ready=Invoke-WebRequest -UseBasicParsing -TimeoutSec 1 'http://127.0.0.1:8080/readyz'
+  $listenerReady=($ready.Content.Trim() -eq 'ready')
+}catch{}
+if($listenerReady -and -not $existingTunnelOwned){Fail-Step 'S2-07' 'Port 8080 reports ready but is not owned by the SPARK tunnel PID file; refusing to reuse an unknown listener'}
+
+$profileTunnelId=Get-TunnelProfileId $profilePath
+$profileHash=Get-TunnelProfileHash $profilePath
+$runtimeState=$null
+if(Test-Path -LiteralPath $runtimeStatePath -PathType Leaf){
+  try{$runtimeState=Get-Content -LiteralPath $runtimeStatePath -Raw | ConvertFrom-Json}catch{}
+}
+$runtimeIdentityOk=$false
+if($listenerReady -and $existingTunnelOwned -and $runtimeState -and $profileTunnelId -and $profileHash){
+  $runtimeIdentityOk=(
+    [int]$runtimeState.pid -eq $existingTunnelPid -and
+    [string]$runtimeState.tunnelId -eq [string]$config.tunnel.id -and
+    [string]$runtimeState.profilePath -ieq [string]$profilePath -and
+    [string]$runtimeState.profileSha256 -eq [string]$profileHash -and
+    [string]$profileTunnelId -eq [string]$config.tunnel.id
+  )
+}
+
+if($runtimeIdentityOk -and (Test-TunnelControlPlanePoll)){
+  Write-Host "[S2-07] PASS - Existing SPARK tunnel identity verified for $($config.tunnel.id), PID=$existingTunnelPid"
+  Start-ChatGPTExperience
+  Write-Host '[S2-11] PASS - Startup complete.'
+  exit 0
+}
+
+if($existingTunnelOwned){
+  $reason='existing tunnel identity could not be verified against current config/profile'
+  if($profileTunnelId -and $profileTunnelId -ne [string]$config.tunnel.id){$reason="tunnel ID mismatch: config=$($config.tunnel.id), profile=$profileTunnelId"}
+  Stop-OwnedTunnel $existingTunnelPid $reason
+  $listenerReady=$false
+}
+
 Write-Host "[S2-07] Checking tunnel profile: $profile"
 Write-Host "[S2-07] SPARK profile directory: $profileDir"
-
-if(Test-Path $profilePath){
-  & $client doctor --profile $profile --profile-dir $profileDir --explain *> (Join-Path $runtime 'tunnel-doctor.log')
-  if($LASTEXITCODE -ne 0){
-    $backupDir=Join-Path $runtime 'tunnel-profile-backups';New-Item -ItemType Directory -Force $backupDir|Out-Null
-    $stamp=Get-Date -Format 'yyyyMMdd-HHmmss'
-    $backupPath=Join-Path $backupDir ($profile + '-' + $stamp + '.yaml')
-    Copy-Item -LiteralPath $profilePath -Destination $backupPath -Force
-    if(-not (Test-Path $backupPath)){Fail-Step 'S2-07' 'failed to create tunnel profile recovery backup'}
-    Write-Host "[S2-07] Existing SPARK profile failed doctor; backup verified: $backupPath"
-    Write-Host '[S2-07] Reinitializing SPARK-owned profile...'
+$profileTunnelId=Get-TunnelProfileId $profilePath
+if(Test-Path -LiteralPath $profilePath -PathType Leaf){
+  if(-not $profileTunnelId -or $profileTunnelId -ne [string]$config.tunnel.id){
+    Backup-TunnelProfile "Tunnel profile ID does not match current config (config=$($config.tunnel.id), profile=$profileTunnelId)"
+    Write-Host '[S2-07] Reinitializing SPARK-owned profile for current tunnel ID...'
     & $client init --force --sample sample_mcp_remote_no_auth --profile $profile --profile-dir $profileDir --tunnel-id $config.tunnel.id --mcp-server-url $config.tunnel.localMcpUrl --control-plane-api-key-ref $keyRef
     if($LASTEXITCODE -ne 0){Fail-Step 'S2-07' 'tunnel profile reinit failed'}
+  }else{
+    & $client doctor --profile $profile --profile-dir $profileDir --explain *> (Join-Path $runtime 'tunnel-doctor.log')
+    if($LASTEXITCODE -ne 0){
+      Backup-TunnelProfile 'Existing SPARK profile failed doctor'
+      Write-Host '[S2-07] Reinitializing SPARK-owned profile...'
+      & $client init --force --sample sample_mcp_remote_no_auth --profile $profile --profile-dir $profileDir --tunnel-id $config.tunnel.id --mcp-server-url $config.tunnel.localMcpUrl --control-plane-api-key-ref $keyRef
+      if($LASTEXITCODE -ne 0){Fail-Step 'S2-07' 'tunnel profile reinit failed'}
+    }
   }
 }else{
   Write-Host '[S2-07] SPARK-owned profile not found; initializing no-auth MCP profile...'
@@ -204,14 +277,18 @@ if(Test-Path $profilePath){
   if($LASTEXITCODE -ne 0){Fail-Step 'S2-07' 'tunnel profile init failed'}
 }
 
+$profileTunnelId=Get-TunnelProfileId $profilePath
+if($profileTunnelId -ne [string]$config.tunnel.id){Fail-Step 'S2-07' "tunnel profile ID mismatch after initialization: config=$($config.tunnel.id), profile=$profileTunnelId"}
 & $client doctor --profile $profile --profile-dir $profileDir --explain *> (Join-Path $runtime 'tunnel-doctor.log')
 if($LASTEXITCODE -ne 0){Fail-Step 'S2-07' 'tunnel doctor failed'}
-Write-Host '[S2-07] PASS - tunnel profile ready'
+Write-Host "[S2-07] PASS - tunnel profile ready for $profileTunnelId"
 
 try{
   $ready=Invoke-WebRequest -UseBasicParsing -TimeoutSec 1 'http://127.0.0.1:8080/readyz'
-  if($ready.Content.Trim() -eq 'ready'){Write-Host '[S2-08] PASS - Tunnel already ready.';Start-ChatGPTExperience;Write-Host '[S2-11] PASS - Startup complete.';exit 0}
-}catch{}
+  if($ready.Content.Trim() -eq 'ready'){Fail-Step 'S2-08' 'Port 8080 is still ready after stale/unverified SPARK tunnel cleanup; refusing to start another tunnel-client'}
+}catch{
+  if($_.Exception.Message.StartsWith('[S2-08]')){throw}
+}
 
 Write-Host '[S2-08] Starting tunnel-client with direct CreateProcess semantics...'
 $psi=New-Object System.Diagnostics.ProcessStartInfo
@@ -229,20 +306,36 @@ try{
   Fail-Step 'S2-08' "tunnel-client launch failed: $($_.Exception.Message)"
 }
 Set-Content -Encoding ascii (Join-Path $runtime 'tunnel-client.pid') $proc.Id
-Write-Host "[S2-08] PASS - tunnel-client started, PID=$($proc.Id)"
+$profileHash=Get-TunnelProfileHash $profilePath
+$runtimeState=[ordered]@{
+  pid=$proc.Id
+  tunnelId=[string]$config.tunnel.id
+  profile=[string]$profile
+  profilePath=[string]$profilePath
+  profileSha256=[string]$profileHash
+  startedAt=(Get-Date).ToString('o')
+}
+$runtimeState | ConvertTo-Json | Set-Content -LiteralPath $runtimeStatePath -Encoding utf8
+if(-not (Test-Path -LiteralPath $runtimeStatePath -PathType Leaf)){Fail-Step 'S2-08' 'failed to persist tunnel runtime identity state'}
+Write-Host "[S2-08] PASS - tunnel-client started, PID=$($proc.Id), tunnelId=$($config.tunnel.id)"
 
 $readyTimeoutSeconds=60
-Write-Host "[S2-09] Waiting for tunnel /readyz (up to $readyTimeoutSeconds seconds)..."
+Write-Host "[S2-09] Waiting for tunnel /readyz + successful Control Plane poll (up to $readyTimeoutSeconds seconds)..."
 $deadline=(Get-Date).AddSeconds($readyTimeoutSeconds)
 do{
   Start-Sleep -Milliseconds 500
   if($proc.HasExited){
     Show-TunnelHealthDiagnostics
-    Fail-Step 'S2-09' "tunnel-client exited before readyz, exitCode=$($proc.ExitCode). Check .runtime\tunnel-doctor.log and run tunnel-client.exe run --profile $profile --profile-dir $profileDir manually for console diagnostics."
+    Fail-Step 'S2-09' "tunnel-client exited before readiness acceptance, exitCode=$($proc.ExitCode). Check .runtime\tunnel-doctor.log and run tunnel-client.exe run --profile $profile --profile-dir $profileDir manually for console diagnostics."
   }
   try{
     $ready=Invoke-WebRequest -UseBasicParsing -TimeoutSec 1 'http://127.0.0.1:8080/readyz'
-    if($ready.Content.Trim() -eq 'ready'){Write-Host "[S2-09] PASS - tunnel ready (PID $($proc.Id))";Start-ChatGPTExperience;Write-Host '[S2-11] PASS - Startup complete.';exit 0}
+    if($ready.Content.Trim() -eq 'ready' -and (Test-TunnelControlPlanePoll)){
+      Write-Host "[S2-09] PASS - tunnel ready + Control Plane poll OK (PID $($proc.Id), tunnelId=$($config.tunnel.id))"
+      Start-ChatGPTExperience
+      Write-Host '[S2-11] PASS - Startup complete.'
+      exit 0
+    }
   }catch{}
 }while((Get-Date)-lt$deadline)
 
