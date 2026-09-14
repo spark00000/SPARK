@@ -59,6 +59,8 @@ test('Windows one-click lifecycle scripts preserve start/restart/status/stop con
   assert.match(cmd, /if \/I "%~1"=="restart" goto :restart/i);
   assert.match(start, /Get-StartApps/);
   assert.match(start, /Get-Process -Name 'ChatGPT'/);
+  assert.match(start, /\.StartsWith\('\[S2-07\]'\)/);
+  assert.doesNotMatch(start, /-like\s+'\[S2-07\]\*'/i);
   assert.match(status, /Get-Process -Name 'ChatGPT'/);
   assert.match(stop, /\$tunnelPid\s*=/);
   assert.doesNotMatch(stop, /\$pid\s*=/i);
