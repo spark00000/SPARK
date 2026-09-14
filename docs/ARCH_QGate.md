@@ -33,8 +33,8 @@
 | PowerShell parser gate | PASS — start/stop/init/bootstrap/validator/ChatGPT UI scripts |
 | Windows live `SPARK.cmd validate` after restart onto 0.0.1 source | PENDING final live gate |
 | ChatGPT `Access token / API key` own-key success / foreign-key denial | **PENDING final multi-user gate** |
-| Ubuntu Node 24 CI on candidate commit | PENDING |
-| Windows Node 24 CI on candidate commit | PENDING |
+| Ubuntu Node 24 CI on candidate commit | PASS — run `34907410144` |
+| Windows Node 24 CI on candidate commit | PASS — run `34907410144` |
 | ProcessService filesystem/network confinement outside FileService roots | **TBD / KNOWN GAP** — current `X` gates cwd only; child authority remains ambient OS-user authority |
 | hostile process on the same local PC calling loopback SPARK | **TBD** — explicitly outside 0.0.1 remote/workspace-user isolation scope |
 | Independent Architecture Peer | PENDING — process gate |
