@@ -102,3 +102,10 @@ test('Windows lifecycle scripts preserve help/start/restart/status/stop contract
   assert.doesNotMatch(uiLauncher, /\$result\s*\|\s*ConvertTo-Json/);
   assert.match(uiCli, /Chrome DevTools|CDP|apply|restore/i);
 });
+
+test('repository hygiene keeps local-only state out of tracked source', async () => {
+  const gitignore = await fs.readFile(path.join(ROOT, '.gitignore'), 'utf8');
+  assert.match(gitignore, /(?:^|\r?\n)_pArc\/(?:\r?\n|$)/);
+  assert.match(gitignore, /(?:^|\r?\n)\.runtime\/(?:\r?\n|$)/);
+  assert.match(gitignore, /modules\/transport\/config\/spark\.local\.json/);
+});
