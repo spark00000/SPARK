@@ -363,7 +363,7 @@ Deployment invariants:
 
 - user/device/SPARK instance마다 distinct `tunnel_id`를 사용한다. 동일 tunnel을 서로 다른 local SPARK instance가 공유하지 않는다.
 - MCP app display name은 authorization identity가 아니다. 이름이 같거나 workspace에 app이 노출되어 있어도 다른 사용자의 local SPARK authority를 얻어서는 안 된다.
-- 각 local SPARK instance는 **instance-specific credential**을 검증한다. 최소 0.0.1 후보는 high-entropy bearer/access token 또는 API key이며, ChatGPT app configuration이 해당 authentication mode를 제공하는 경우 이를 우선 검토한다.
+- 각 local SPARK instance는 **instance-specific credential**을 검증한다. 0.0.1 source에는 `transport.auth.mode=bearer`와 `bearerTokenSha256` 기반 local MCP ingress 검증이 구현되었으며, raw token은 local config에 저장하지 않고 SHA-256 digest만 보관한다. `Authorization: Bearer <token>`이 없거나 digest가 일치하지 않으면 MCP path는 `401`로 fail closed한다. 현재 release default는 backward compatibility 때문에 `none`이며, ChatGPT `Access token / API key` E2E와 installer provisioning을 통과한 뒤 0.0.1 deployment default를 확정한다.
 - static credential을 사용하면 중앙 OAuth/auth server는 runtime dependency가 아니다. Credential은 instance마다 달라야 하고, local secret store에 저장하며, rotate/revoke 가능해야 한다. `no scheduled expiry`는 허용할 수 있으나 "절대 폐기 불가" credential로 설계하지 않는다.
 - OAuth/OIDC가 필요한 경우 ChatGPT의 app connection/authentication machinery가 OAuth client 역할을 하고 provider-issued credential을 연결 상태로 관리한다. SPARK가 ChatGPT 내부에 별도 auth code를 삽입하는 구조가 아니다. Authorization/token endpoint는 external IdP가 제공하고, MCP payload path는 계속 user-specific Secure MCP Tunnel을 통해 local SPARK로 직접 간다.
 - OAuth `sub` 또는 static token 어느 방식을 쓰든 local SPARK는 **자기 instance에 허용된 principal/credential만** 승인한다. Workspace membership 또는 app visibility만으로 authorization하지 않는다.
@@ -548,7 +548,7 @@ Architecture-only / deferred:
 | ADR-023 | Current `run_command`의 `X`는 cwd authorization만 의미한다. child process의 filesystem/network confinement은 provider-native PAL 구현이 검증될 때까지 TBD이며, `R`-only 및 unconfigured paths는 ProcessService boundary로 보호된다고 주장하지 않음 |
 | ADR-024 | Cygwin은 Windows File/Permission PAL을 단순화할 수 있는 POSIX/ACL helper 후보로만 연구하며, ProcessService sandbox 또는 filesystem security boundary로 취급하지 않음 |
 | ADR-025 | 0.0.1 intermediate multi-user deployment는 user/device/SPARK instance별 distinct Secure MCP Tunnel + local instance authorization을 사용하고 중앙 SPARK payload relay를 두지 않음 |
-| ADR-026 | 약 5명 규모의 0.0.1에서는 ChatGPT app이 지원하는 경우 per-instance high-entropy bearer/access token 또는 API key를 최소 인증 방식으로 우선 검토하며 OAuth/OIDC는 account lifecycle이 필요할 때 선택적으로 사용 |
+| ADR-026 | 약 5명 규모의 0.0.1에서는 per-instance high-entropy bearer/access token을 최소 인증 방식으로 채택한다. Local SPARK는 raw token 대신 SHA-256 digest를 저장하고 `Authorization: Bearer`를 fail-closed 검증한다. OAuth/OIDC는 account lifecycle이 필요할 때 선택적으로 사용 |
 | ADR-027 | text/binary 구분은 heuristic이 아니라 operation contract로 정의한다. `read_file`은 strict UTF-8 text이며 arbitrary binary/file download는 별도 bounded MCP resource/blob/download capability로 설계 |
 
 ## 18. 0.0.0 Verification Status

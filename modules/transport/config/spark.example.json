@@ -17,7 +17,11 @@
     "maxReadBytes": 1048576,
     "commandTimeoutMs": 30000,
     "stateDir": ".runtime",
-    "recycleBin": true
+    "recycleBin": true,
+    "auth": {
+      "mode": "none",
+      "bearerTokenSha256": ""
+    }
   },
   "chatgptUi": {
     "enabled": true,

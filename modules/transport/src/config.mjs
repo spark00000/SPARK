@@ -91,6 +91,20 @@ function normalizeAllowedRoots(value) {
   return rootPolicies;
 }
 
+function normalizeMcpAuth({ transport, env, overrides }) {
+  const configured = transport.auth ?? {};
+  const requestedMode = overrides.authMode ?? env.SPARK_MCP_AUTH_MODE ?? configured.mode ?? 'none';
+  const mode = String(requestedMode).trim().toLowerCase();
+  if (!['none', 'bearer'].includes(mode)) throw new Error('transport.auth.mode must be none or bearer');
+  if (mode === 'none') return { mode: 'none', bearerTokenSha256: '' };
+
+  const rawHash = overrides.bearerTokenSha256 ?? env.SPARK_MCP_BEARER_TOKEN_SHA256 ?? configured.bearerTokenSha256;
+  if (typeof rawHash !== 'string' || !/^[0-9a-f]{64}$/i.test(rawHash.trim())) {
+    throw new Error('transport.auth.bearerTokenSha256 must be a 64-character SHA-256 hex digest when bearer auth is enabled');
+  }
+  return { mode: 'bearer', bearerTokenSha256: rawHash.trim().toLowerCase() };
+}
+
 export function loadConfig(overrides = {}) {
   const env = process.env;
   const configPath = resolveConfigPath({ override: overrides.configPath, envPath: env.SPARK_CONFIG });
@@ -119,6 +133,7 @@ export function loadConfig(overrides = {}) {
     maxCommandOutputBytes: positiveInteger(overrides.maxCommandOutputBytes ?? env.SPARK_MAX_COMMAND_OUTPUT_BYTES ?? transport.maxCommandOutputBytes, DEFAULT_MAX_COMMAND_OUTPUT_BYTES, 'maxCommandOutputBytes'),
     stateDir: path.resolve(overrides.stateDir ?? env.SPARK_STATE_DIR ?? transport.stateDir ?? defaultPrivateStateDir()),
     recycleBin: transport.recycleBin !== false,
+    auth: normalizeMcpAuth({ transport, env, overrides }),
     tunnel: {
       enabled: tunnel.enabled !== false,
       id: env.SPARK_TUNNEL_ID ?? tunnel.id ?? '',
