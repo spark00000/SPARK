@@ -1,7 +1,7 @@
-# ARCH — SPARK
+# ARCH — SPARK (Symbiotic Personal AI Robotic Keeper)
 
-**Version:** 0.0.1  
-**Status:** Accepted Small PoC Architecture Baseline  
+**Version:** 0.0.0
+**Status:** Accepted Small PoC Architecture Baseline
 **Architecture review:** 2026-09-12 / 1.23
 
 ## 1. Purpose and Product Boundary
@@ -76,7 +76,7 @@ AI Brain
 4. **UX independent Core** — Chat UI, Obsidian, future SPARK Desktop/Robot UI는 execution Core 밖에 둔다.
 5. **Body independent** — Windows filesystem/process는 first Body implementation일 뿐이다.
 6. **Logical before physical** — Core logical operation은 PAL/device adapter가 실제 OS/device 동작으로 매핑한다.
-7. **Windows-first 0.0.1** — physical target은 Windows. 다른 OS/device PAL은 TBD다.
+7. **Windows-first 0.0.0** — physical target은 Windows. 다른 OS/device PAL은 TBD다.
 8. **Fail closed** — hidden elevation/destructive fallback 금지.
 9. **Recoverability** — overwrite/modify recovery와 Windows Recycle Bin delete.
 10. **Bounded execution** — timeout, descendant cleanup, bounded stdout/stderr.
@@ -115,7 +115,7 @@ Claude / Claude Desktop
   -> same SPARK Agent Core
 ```
 
-Claude runtime code/test는 0.0.1에 포함하지 않는다. SPARK는 provider subscription credential을 탈취하거나 unsupported login/OAuth reuse 또는 quota bypass를 시도하지 않는다.
+Claude runtime code/test는 0.0.0에 포함하지 않는다. SPARK는 provider subscription credential을 탈취하거나 unsupported login/OAuth reuse 또는 quota bypass를 시도하지 않는다.
 
 ## 5. Human UX Plane
 
@@ -145,7 +145,7 @@ Workspace         | Status / Approval
 
 ### 6.2. ProcessService
 
-0.0.1에서는 `run_command`만 구현한다. 이는 simple native CLI/process execution이다.
+0.0.0에서는 `run_command`만 구현한다. 이는 simple native CLI/process execution이다.
 
 Future process lifecycle:
 
@@ -232,7 +232,7 @@ X = run_command cwd authorization
 
 ## 10. Command Execution Trust Statement
 
-0.0.1 `run_command`는 **trusted local, non-elevated Small PoC capability**다.
+0.0.0 `run_command`는 **trusted local, non-elevated Small PoC capability**다.
 
 - explicit executable + argv
 - `shell:false` by default
@@ -244,7 +244,7 @@ X = run_command cwd authorization
 - automatic UAC/RunAs 금지
 - **cwd confinement은 OS filesystem sandbox가 아니다**
 
-0.0.1 Windows timeout cleanup은 verified `taskkill /T /F` tree termination을 사용한다. CatDesk에서 확인한 Windows Job Object는 stronger production ownership backend로 후속 DEBT에 유지한다. Distribution-grade filesystem/network sandbox 역시 0.0.1 범위가 아니다.
+0.0.0 Windows timeout cleanup은 verified `taskkill /T /F` tree termination을 사용한다. CatDesk에서 확인한 Windows Job Object는 stronger production ownership backend로 후속 DEBT에 유지한다. Distribution-grade filesystem/network sandbox 역시 0.0.0 범위가 아니다.
 
 ## 11. Recoverable Delete
 
@@ -306,7 +306,9 @@ summary
 
 `SPARK status`는 recent operations를 health와 함께 표시한다.
 
-Default runtime/recovery/ledger state는 repository/workspace가 아니라 user-private local state directory를 사용한다. Test/development는 explicit `stateDir` override를 허용한다.
+Core 자체의 config에 `stateDir`이 없으면 OS user-private state directory를 사용한다. 현재 private-use 배치는 `daemon.stateDir=".runtime"`을 사용하여 repository 내부의 Git-ignored `.runtime/`에 config, secret, ledger, recovery, PID/profile 같은 machine-local state를 모은다. tracked source에는 이 상태를 포함하지 않는다.
+
+Transport config 탐색 순서는 명시적 `configPath` → 실제 존재하는 `SPARK_CONFIG` → 존재하는 `modules/transport/config/spark.local.json` → `.runtime/config/spark.local.json` fallback이다. tracked template은 `modules/transport/config/spark.example.json`만 유지한다.
 
 ## 14. Brain Host Cost / Quota Rule
 
@@ -326,7 +328,7 @@ Default runtime/recovery/ledger state는 repository/workspace가 아니라 user-
 - **ChatGPT Local Coder** — structured result/activity stream/process lifecycle decomposition. Open full-machine security model은 채택하지 않음.
 - **Jan** — future provider-neutral/local-model client and UI reference.
 
-## 16. 0.0.1 Implemented Scope
+## 16. 0.0.0 Implemented Scope
 
 Implemented:
 
@@ -360,7 +362,7 @@ Architecture-only / deferred:
 | ADR-003 | Brain Gateway가 provider/connector 차이를 흡수 |
 | ADR-004 | UX는 Core와 분리된 Human UX Plane |
 | ADR-005 | Agent Core와 Physical Body를 Body Port/PAL로 분리 |
-| ADR-006 | 0.0.1 physical target = Windows |
+| ADR-006 | 0.0.0 physical target = Windows |
 | ADR-007 | FileService와 ProcessService 분리 |
 | ADR-008 | GUI/Computer Use는 후속 Sprint |
 | ADR-009 | working directory와 authorization root 분리 |
@@ -373,14 +375,14 @@ Architecture-only / deferred:
 | ADR-016 | Claude/other Brain implementation은 target E2E 가능 시점까지 deferred |
 | ADR-017 | future physical capability = Computer/Drone/Robot/Sensor/Actuator ports |
 
-## 18. 0.0.1 Verification Status
+## 18. 0.0.0 Verification Status
 
 GitHub Actions Node 24 matrix에서 final version commit `5014a3e816c4ee6af57dd6fe6c300199789a3f93`에 대해:
 
 - Ubuntu: PASS
 - Windows: PASS
 
-Source/automated Small PoC acceptance는 PASS다. Live ChatGPT Secure MCP Tunnel mutation/exec E2E는 배포된 local daemon을 0.0.1로 갱신한 뒤 별도 deployment acceptance로 수행한다. Independent Architecture Peer review 역시 별도 process gate이며 이 문서의 author self-check와 동일시하지 않는다.
+Source/automated Small PoC acceptance는 PASS다. Live ChatGPT Secure MCP Tunnel mutation/exec E2E는 배포된 local daemon을 0.0.0로 갱신한 뒤 별도 deployment acceptance로 수행한다. Independent Architecture Peer review 역시 별도 process gate이며 이 문서의 author self-check와 동일시하지 않는다.
 
 ## 19. External References
 
@@ -394,11 +396,11 @@ Project process/verification records are local-only under `_pArc/` (`SWE1.md`, `
 
 ## Baseline Handoff
 
-`0.0.1`은 CRUD + simple execution의 verified Small PoC source baseline이다. 다음 implementation Sprint는 GUI/Computer Use 또는 alternate Brain/physical adapter 중 실제 target requirement가 선택된 뒤 시작한다.
+`0.0.0`은 현재 기능을 정리한 verified **private-use baseline**이다. 이 baseline에는 Transport 10-tool, Secure MCP Tunnel, one-click lifecycle, integrated Theme, multi-root/RWX policy와 local-only runtime separation이 포함된다. 다음 `0.0.1`은 multi-user usage와 installation/deployment hardening을 별도 범위로 진행한다.
 
 ## 20. Architecture Reference Study
 
-**Date:** 2026-09-12  
+**Date:** 2026-09-12
 **Purpose:** SPARK Sprint-2 architecture 재정립을 위한 source-level comparison
 **Scope:** CatDesk, Local Coding Agent, ChatGPT Local Coder, Jan
 
@@ -739,7 +741,7 @@ OS Adapter
 
 ## 9. Small PoC Recommendation
 
-0.0.1 목표는 범위를 줄인다.
+0.0.0 목표는 범위를 줄인다.
 
 ### Must finish
 
@@ -809,7 +811,7 @@ OS Adapter
 
 ## 21. Brain Host / Cost / Quota Comparison
 
-**Date:** 2026-09-12  
+**Date:** 2026-09-12
 **Scope:** API/Codex/Work 대신 subscription/chat allowance를 SPARK Brain으로 사용할 수 있는지 검토
 
 ## 1. CatDesk의 `3,000 messages/week`는 어디서 왔는가
@@ -857,7 +859,7 @@ D. Local model
 
 ## 3. Brain Host comparison
 
-| Brain Host | Subscription/chat allowance로 SPARK tool 사용 | MCP/connector path | Limit form | 0.0.1 |
+| Brain Host | Subscription/chat allowance로 SPARK tool 사용 | MCP/connector path | Limit form | 0.0.0 |
 |---|---|---|---|---|
 | ChatGPT | **Yes, current proven path** | Custom MCP/App + Secure MCP Tunnel | Plan/model dependent; old GPT-5.5 3,000/week는 historical | Implemented/current |
 | Claude.ai | **Yes, technically viable** | Custom remote MCP connector | Variable usage; 5-hour session reset + weekly cap | Architecture only |

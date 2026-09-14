@@ -81,10 +81,14 @@ function Show-TunnelHealthDiagnostics(){
   Write-Host '[S2-09] ---- end tunnel health diagnostics ----'
 }
 
-if(-not $ConfigPath){$ConfigPath=Join-Path $root 'config\spark.local.json'}
+if(-not $ConfigPath){
+  $moduleConfig=Join-Path $root 'modules\transport\config\spark.local.json'
+  $runtimeConfig=Join-Path $root '.runtime\config\spark.local.json'
+  if(Test-Path -LiteralPath $moduleConfig -PathType Leaf){$ConfigPath=$moduleConfig}else{$ConfigPath=$runtimeConfig}
+}
 if(-not (Test-Path $ConfigPath)){
   Write-Host '[S2-01] FAIL - local config not found.' -ForegroundColor Red
-  Write-Host '         Copy config\spark.example.json to config\spark.local.json and edit allowedRoot/tunnel.id.'
+  Write-Host '         Copy modules\transport\config\spark.example.json to .runtime\config\spark.local.json and edit allowedRoot/tunnel.id.'
   exit 2
 }
 $ConfigPath=(Resolve-Path $ConfigPath).Path

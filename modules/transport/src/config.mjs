@@ -15,7 +15,16 @@ import {
 const MODULE_DIR = path.dirname(fileURLToPath(import.meta.url));
 export const MODULE_ROOT = path.resolve(MODULE_DIR, '..');
 export const PROJECT_ROOT = path.resolve(MODULE_DIR, '..', '..', '..');
+export const MODULE_CONFIG_PATH = path.join(MODULE_ROOT, 'config', 'spark.local.json');
+export const RUNTIME_CONFIG_PATH = path.join(PROJECT_ROOT, '.runtime', 'config', 'spark.local.json');
 const ROOT_PERMISSION_ORDER = Object.freeze(['R', 'W', 'X']);
+
+export function resolveConfigPath({ override, envPath, modulePath = MODULE_CONFIG_PATH, runtimePath = RUNTIME_CONFIG_PATH } = {}) {
+  if (override) return path.resolve(override);
+  if (envPath && fs.existsSync(envPath)) return path.resolve(envPath);
+  if (fs.existsSync(modulePath)) return path.resolve(modulePath);
+  return path.resolve(runtimePath);
+}
 
 function positiveInteger(value, fallback, name) {
   if (value === undefined || value === null || value === '') return fallback;
@@ -84,7 +93,7 @@ function normalizeAllowedRoots(value) {
 
 export function loadConfig(overrides = {}) {
   const env = process.env;
-  const configPath = path.resolve(overrides.configPath ?? env.SPARK_CONFIG ?? path.join(PROJECT_ROOT, 'config', 'spark.local.json'));
+  const configPath = resolveConfigPath({ override: overrides.configPath, envPath: env.SPARK_CONFIG });
   const file = readJsonIfExists(configPath);
   const daemon = file.daemon ?? {};
   const tunnel = file.tunnel ?? {};

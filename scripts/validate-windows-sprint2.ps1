@@ -7,7 +7,11 @@ function Fail-Step([string]$Id,[string]$Message){
   throw "[$Id] $Message"
 }
 
-if(-not $ConfigPath){$ConfigPath=Join-Path $root 'config\spark.local.json'}
+if(-not $ConfigPath){
+  $moduleConfig=Join-Path $root 'modules\transport\config\spark.local.json'
+  $runtimeConfig=Join-Path $root '.runtime\config\spark.local.json'
+  if(Test-Path -LiteralPath $moduleConfig -PathType Leaf){$ConfigPath=$moduleConfig}else{$ConfigPath=$runtimeConfig}
+}
 if(-not (Test-Path $ConfigPath)){Fail-Step 'S2V-01' 'local config not found'}
 try{$config=Get-Content -Raw $ConfigPath | ConvertFrom-Json}catch{Fail-Step 'S2V-01' "invalid JSON in local config: $($_.Exception.Message)"}
 $base="http://$($config.daemon.host):$($config.daemon.port)$($config.daemon.mcpPath)"

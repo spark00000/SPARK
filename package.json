@@ -1,6 +1,6 @@
 {
   "name": "spark",
-  "version": "0.0.1",
+  "version": "0.0.0",
   "private": true,
   "description": "SPARK local agent runtime with transport, theme, and future UI modules.",
   "type": "module",

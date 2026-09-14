@@ -2,11 +2,11 @@
   "daemon": {
     "allowedRoot": [
       {
-        "path": "E:/SRC/SPARK",
+        "path": "C:/SPARK/workspace",
         "permissions": "RWX"
       },
       {
-        "path": "E:/SRC/00_pArc",
+        "path": "C:/SPARK/reference",
         "permissions": "R"
       }
     ],
