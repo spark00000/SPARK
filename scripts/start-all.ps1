@@ -1,6 +1,8 @@
 param([string]$ConfigPath)
 $ErrorActionPreference='Stop'
+$ProgressPreference='SilentlyContinue'
 $root=Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path)
+$boundedProcess=Join-Path $root 'modules\transport\src\bounded-process-cli.mjs'
 
 function Fail-Step([string]$Id,[string]$Message){
   Write-Host "[$Id] FAIL - $Message" -ForegroundColor Red
@@ -49,11 +51,20 @@ function Start-ChatGPTExperience(){
 
   $theme='dark-red'
   if($config.PSObject.Properties.Name -contains 'chatgptUi' -and $config.chatgptUi.theme){$theme=[string]$config.chatgptUi.theme}
+  $progressEnabled=$true
+  if($config.PSObject.Properties.Name -contains 'chatgptUi' -and $config.chatgptUi -and $config.chatgptUi.PSObject.Properties.Name -contains 'progress' -and $config.chatgptUi.progress -and $config.chatgptUi.progress.enabled -eq $false){$progressEnabled=$false}
+  $transportHost=if($config.transport.host){[string]$config.transport.host}else{'127.0.0.1'}
+  $transportUrlHost=if($transportHost -eq '::1'){'[::1]'}else{$transportHost}
+  $transportPort=if($config.transport.port){[int]$config.transport.port}else{8765}
+  $healthPath=if($config.transport.healthPath){[string]$config.transport.healthPath}else{'/health'}
+  $transportHealthUrl="http://${transportUrlHost}:$transportPort$healthPath"
   $launcher=Join-Path $root 'modules\chatgpt-ui\scripts\start-chatgpt-ui.ps1'
   if(-not (Test-Path -LiteralPath $launcher -PathType Leaf)){Fail-Step 'S2-10' "ChatGPT UI launcher not found: $launcher"}
-  Write-Host "[S2-10] Starting ChatGPT with integrated ChatGPT UI: $theme"
-  & powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File $launcher -Theme $theme
-  if($LASTEXITCODE -ne 0){Fail-Step 'S2-10' 'integrated ChatGPT UI launcher failed'}
+  Write-Host "[S2-10] Starting ChatGPT with integrated ChatGPT UI: $theme, progress=$progressEnabled"
+  $uiArgs=@('-NoLogo','-NoProfile','-ExecutionPolicy','Bypass','-File',$launcher,'-Theme',$theme,'-TransportHealthUrl',$transportHealthUrl)
+  if(-not $progressEnabled){$uiArgs+='-DisableProgress'}
+  & node $boundedProcess 60000 powershell.exe @uiArgs
+  if($LASTEXITCODE -ne 0){Fail-Step 'S2-10' "integrated ChatGPT UI launcher failed or exceeded 60 second watchdog (exitCode=$LASTEXITCODE)"}
   if(-not (Test-ChatGPTUiRuntime)){Fail-Step 'S2-10' 'ChatGPT UI launcher returned success but runtime validation failed'}
   Write-Host '[S2-10] PASS - ChatGPT + ChatGPT UI runtime active'
 }
@@ -79,8 +90,8 @@ function Show-TunnelHealthDiagnostics(){
   if($client -and (Test-Path -LiteralPath $client -PathType Leaf)){
     Write-Host '[S2-09] tunnel-client control-plane health:'
     try{
-      & $client health --port 8080 --pid-file $healthPidFile --require-control-plane-poll --json
-      if($LASTEXITCODE -ne 0){Write-Host "[S2-09] tunnel-client health exitCode=$LASTEXITCODE"}
+      & node $boundedProcess 10000 $client health --port 8080 --pid-file $healthPidFile --require-control-plane-poll --json
+      if($LASTEXITCODE -ne 0){Write-Host "[S2-09] tunnel-client health failed or exceeded 10 second watchdog, exitCode=$LASTEXITCODE"}
     }catch{
       Write-Host "[S2-09] tunnel-client health failed: $($_.Exception.Message)"
     }
@@ -121,7 +132,7 @@ $transportLog=Join-Path $transportStateDir 'spark.log'
 Write-Host '[S2-03] Starting Transport service...'
 Push-Location $root
 try {
-  $transportStartOutput=@(& npm run --silent transport:start 2>&1)
+  $transportStartOutput=@(& node $boundedProcess 15000 cmd.exe /d /c npm run --silent transport:start 2>&1)
   $transportStartExit=$LASTEXITCODE
   if($transportStartExit -ne 0){
     Write-Host '[S2-03] FAIL - Transport start returned a non-zero exit code.' -ForegroundColor Red
@@ -159,8 +170,8 @@ Write-Host "[S2-05] PASS - Tunnel key file: $keyPath (value hidden)"
 $clientDir=$config.tunnel.clientDir
 if(-not [System.IO.Path]::IsPathRooted($clientDir)){$clientDir=Join-Path $root $clientDir}
 Write-Host "[S2-06] Checking tunnel-client: $clientDir"
-& (Join-Path $root 'modules\transport\scripts\bootstrap-tunnel.ps1') -Version $config.tunnel.clientVersion -ClientDir $clientDir
-if($LASTEXITCODE -ne 0){Fail-Step 'S2-06' 'tunnel-client bootstrap failed'}
+& node $boundedProcess 180000 powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File (Join-Path $root 'modules\transport\scripts\bootstrap-tunnel.ps1') -Version $config.tunnel.clientVersion -ClientDir $clientDir
+if($LASTEXITCODE -ne 0){Fail-Step 'S2-06' "tunnel-client bootstrap failed or exceeded 180 second watchdog (exitCode=$LASTEXITCODE)"}
 $client=Join-Path $clientDir 'tunnel-client.exe'
 if(-not (Test-Path $client)){Fail-Step 'S2-06' "tunnel-client.exe not found after bootstrap: $client"}
 Write-Host "[S2-06] PASS - tunnel-client ready: $client"
@@ -206,7 +217,7 @@ function Stop-OwnedTunnel([int]$TunnelPid,[string]$Reason){
 
 function Test-TunnelControlPlanePoll(){
   try{
-    $healthOutput=& $client health --port 8080 --require-control-plane-poll --json 2>$null
+    $healthOutput=& node $boundedProcess 10000 $client health --port 8080 --require-control-plane-poll --json 2>$null
     if($LASTEXITCODE -ne 0){return $false}
     $healthJson=($healthOutput -join [Environment]::NewLine) | ConvertFrom-Json
     return ($healthJson.result -eq 'ok' -and $healthJson.control_plane_poll.ok -eq $true)
@@ -269,27 +280,27 @@ if(Test-Path -LiteralPath $profilePath -PathType Leaf){
   if(-not $profileTunnelId -or $profileTunnelId -ne [string]$config.tunnel.id){
     Backup-TunnelProfile "Tunnel profile ID does not match current config (config=$($config.tunnel.id), profile=$profileTunnelId)"
     Write-Host '[S2-07] Reinitializing SPARK-owned profile for current tunnel ID...'
-    & $client init --force --sample sample_mcp_remote_no_auth --profile $profile --profile-dir $profileDir --tunnel-id $config.tunnel.id --mcp-server-url $config.tunnel.localMcpUrl --control-plane-api-key-ref $keyRef
-    if($LASTEXITCODE -ne 0){Fail-Step 'S2-07' 'tunnel profile reinit failed'}
+    & node $boundedProcess 30000 $client init --force --sample sample_mcp_remote_no_auth --profile $profile --profile-dir $profileDir --tunnel-id $config.tunnel.id --mcp-server-url $config.tunnel.localMcpUrl --control-plane-api-key-ref $keyRef
+    if($LASTEXITCODE -ne 0){Fail-Step 'S2-07' "tunnel profile reinit failed or exceeded 30 second watchdog (exitCode=$LASTEXITCODE)"}
   }else{
-    & $client doctor --profile $profile --profile-dir $profileDir --explain *> (Join-Path $runtime 'tunnel-doctor.log')
+    & node $boundedProcess 30000 $client doctor --profile $profile --profile-dir $profileDir --explain *> (Join-Path $runtime 'tunnel-doctor.log')
     if($LASTEXITCODE -ne 0){
-      Backup-TunnelProfile 'Existing SPARK profile failed doctor'
+      Backup-TunnelProfile 'Existing SPARK profile failed doctor or exceeded watchdog'
       Write-Host '[S2-07] Reinitializing SPARK-owned profile...'
-      & $client init --force --sample sample_mcp_remote_no_auth --profile $profile --profile-dir $profileDir --tunnel-id $config.tunnel.id --mcp-server-url $config.tunnel.localMcpUrl --control-plane-api-key-ref $keyRef
-      if($LASTEXITCODE -ne 0){Fail-Step 'S2-07' 'tunnel profile reinit failed'}
+      & node $boundedProcess 30000 $client init --force --sample sample_mcp_remote_no_auth --profile $profile --profile-dir $profileDir --tunnel-id $config.tunnel.id --mcp-server-url $config.tunnel.localMcpUrl --control-plane-api-key-ref $keyRef
+      if($LASTEXITCODE -ne 0){Fail-Step 'S2-07' "tunnel profile reinit failed or exceeded 30 second watchdog (exitCode=$LASTEXITCODE)"}
     }
   }
 }else{
   Write-Host '[S2-07] SPARK-owned profile not found; initializing no-auth MCP profile...'
-  & $client init --sample sample_mcp_remote_no_auth --profile $profile --profile-dir $profileDir --tunnel-id $config.tunnel.id --mcp-server-url $config.tunnel.localMcpUrl --control-plane-api-key-ref $keyRef
-  if($LASTEXITCODE -ne 0){Fail-Step 'S2-07' 'tunnel profile init failed'}
+  & node $boundedProcess 30000 $client init --sample sample_mcp_remote_no_auth --profile $profile --profile-dir $profileDir --tunnel-id $config.tunnel.id --mcp-server-url $config.tunnel.localMcpUrl --control-plane-api-key-ref $keyRef
+  if($LASTEXITCODE -ne 0){Fail-Step 'S2-07' "tunnel profile init failed or exceeded 30 second watchdog (exitCode=$LASTEXITCODE)"}
 }
 
 $profileTunnelId=Get-TunnelProfileId $profilePath
 if($profileTunnelId -ne [string]$config.tunnel.id){Fail-Step 'S2-07' "tunnel profile ID mismatch after initialization: config=$($config.tunnel.id), profile=$profileTunnelId"}
-& $client doctor --profile $profile --profile-dir $profileDir --explain *> (Join-Path $runtime 'tunnel-doctor.log')
-if($LASTEXITCODE -ne 0){Fail-Step 'S2-07' 'tunnel doctor failed'}
+& node $boundedProcess 30000 $client doctor --profile $profile --profile-dir $profileDir --explain *> (Join-Path $runtime 'tunnel-doctor.log')
+if($LASTEXITCODE -ne 0){Fail-Step 'S2-07' "tunnel doctor failed or exceeded 30 second watchdog (exitCode=$LASTEXITCODE)"}
 Write-Host "[S2-07] PASS - tunnel profile ready for $profileTunnelId"
 
 try{

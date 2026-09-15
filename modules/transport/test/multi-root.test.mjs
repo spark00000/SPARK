@@ -158,3 +158,24 @@ test('allowedRoot supports per-root R/W/X permissions', async (t) => {
   result = await runtime.runCommand({ command: process.execPath, args: ['--version'], cwd: second });
   assert.equal(result.ok, true);
 });
+
+test('config normalizes optional MCP bearer authentication', async (t) => {
+  const f = await makeFixture();
+  t.after(f.cleanup);
+  const digest = 'a'.repeat(64);
+  const configPath = path.join(f.base, 'config-auth.json');
+  await fs.writeFile(configPath, JSON.stringify({ transport: { allowedRoot: f.root, operationTimeoutMs: 4567, httpRequestTimeoutMs: 2345, serverCloseTimeoutMs: 765, auth: { mode: 'bearer', bearerTokenSha256: digest } } }), 'utf8');
+  const config = loadConfig({ configPath });
+  assert.deepEqual(config.auth, { mode: 'bearer', bearerTokenSha256: digest });
+  assert.equal(config.operationTimeoutMs, 4567);
+  assert.equal(config.httpRequestTimeoutMs, 2345);
+  assert.equal(config.serverCloseTimeoutMs, 765);
+
+  const noAuthPath = path.join(f.base, 'config-no-auth.json');
+  await fs.writeFile(noAuthPath, JSON.stringify({ transport: { allowedRoot: f.root } }), 'utf8');
+  assert.deepEqual(loadConfig({ configPath: noAuthPath }).auth, { mode: 'none', bearerTokenSha256: '' });
+
+  const invalidPath = path.join(f.base, 'config-auth-invalid.json');
+  await fs.writeFile(invalidPath, JSON.stringify({ transport: { allowedRoot: f.root, auth: { mode: 'bearer', bearerTokenSha256: 'not-a-sha256' } } }), 'utf8');
+  assert.throws(() => loadConfig({ configPath: invalidPath }), /bearerTokenSha256/);
+});
