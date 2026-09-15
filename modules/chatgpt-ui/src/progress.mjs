@@ -21,8 +21,8 @@ function progressCss(theme) {
   return [
     `#${PROGRESS_ROOT_ID} { position: fixed; inset: 0; z-index: 2147483647; pointer-events: none; font: 600 9px/1.18 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; color: ${c.text.primary}; }`,
     `#${PROGRESS_ROOT_ID} .spark-progress-panel { position: fixed; box-sizing: border-box; overflow: hidden; border: 1px solid ${c.borders.strong}; border-radius: 5px; background: ${c.surfaces.elevatedBackground}; box-shadow: 0 2px 8px rgba(0,0,0,.18); opacity: .92; }`,
-    `#${PROGRESS_ROOT_ID} .spark-progress-top { width: 140px; padding: 4px 5px; }`,
-    `#${PROGRESS_ROOT_ID} .spark-progress-bottom { width: 124px; padding: 4px 5px; }`,
+    `#${PROGRESS_ROOT_ID} .spark-progress-top { padding: 4px 5px; }`,
+    `#${PROGRESS_ROOT_ID} .spark-progress-bottom { padding: 4px 5px; }`,
     `#${PROGRESS_ROOT_ID} .spark-progress-row { display: grid; grid-template-columns: 34px 1fr auto; gap: 4px; align-items: center; min-height: 15px; }`,
     `#${PROGRESS_ROOT_ID} .spark-progress-label { color: ${c.text.secondary}; letter-spacing: .02em; }`,
     `#${PROGRESS_ROOT_ID} .spark-progress-value { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }`,
@@ -33,7 +33,11 @@ function progressCss(theme) {
     `#${PROGRESS_ROOT_ID} .spark-progress-fill.success { background: ${c.charts.green}; }`,
     `#${PROGRESS_ROOT_ID} .spark-progress-fill.warning { background: ${c.charts.orange}; }`,
     `#${PROGRESS_ROOT_ID} .spark-progress-fill.danger { background: ${c.charts.red}; }`,
-    `#${PROGRESS_ROOT_ID} .spark-telemetry-row { display: flex; justify-content: space-between; gap: 4px; min-height: 12px; white-space: nowrap; }`,
+    `#${PROGRESS_ROOT_ID} .spark-usage-row { display: grid; grid-template-columns: 18px 28px 1fr; gap: 2px; align-items: center; min-height: 15px; white-space: nowrap; }`,
+    `#${PROGRESS_ROOT_ID} .spark-usage-label { color: ${c.text.secondary}; }`,
+    `#${PROGRESS_ROOT_ID} .spark-usage-percent { text-align: right; }`,
+    `#${PROGRESS_ROOT_ID} .spark-usage-reset { color: ${c.text.secondary}; overflow: hidden; text-overflow: ellipsis; text-align: right; }`,
+    `#${PROGRESS_ROOT_ID} .spark-telemetry-row { display: flex; justify-content: space-between; gap: 4px; min-height: 15px; white-space: nowrap; }`,
     `#${PROGRESS_ROOT_ID} .spark-telemetry-row span:first-child { color: ${c.text.secondary}; }`,
     `#${PROGRESS_ROOT_ID} .spark-telemetry-row span:last-child { overflow: hidden; text-overflow: ellipsis; text-align: right; }`,
     '@keyframes spark-progress-slide { from { transform: translateX(-35%); } to { transform: translateX(190%); } }',
@@ -47,9 +51,14 @@ function progressHtml() {
     '<div class="spark-progress-row"><span class="spark-progress-label">SPARK</span><span class="spark-progress-value" data-k="spark"></span><span class="spark-progress-time" data-k="spark-time"></span><div class="spark-progress-track"><div class="spark-progress-fill" data-k="spark-fill"></div></div></div>',
     '</div>',
     '<div class="spark-progress-panel spark-progress-bottom" data-k="bottom-panel">',
+    '<div data-k="usage-box">',
+    '<div class="spark-usage-row"><span class="spark-usage-label" data-k="usage-primary-label">5H</span><span class="spark-usage-percent" data-k="usage-primary-percent">--</span><span class="spark-usage-reset" data-k="usage-primary-reset"></span></div>',
+    '<div class="spark-usage-row"><span class="spark-usage-label" data-k="usage-secondary-label">WK</span><span class="spark-usage-percent" data-k="usage-secondary-percent">--</span><span class="spark-usage-reset" data-k="usage-secondary-reset"></span></div>',
+    '</div>',
+    '<div data-k="fallback-box" style="display:none">',
     '<div class="spark-telemetry-row"><span>MODEL</span><span data-k="model"></span></div>',
-    '<div class="spark-telemetry-row"><span>CHAT</span><span data-k="chat-chars"></span></div>',
-    '<div class="spark-telemetry-row"><span>TOK~</span><span data-k="chat-tokens"></span></div>',
+    '<div class="spark-telemetry-row"><span>CHAT</span><span data-k="chat-summary"></span></div>',
+    '</div>',
     '</div>',
   ].join('');
 }
@@ -63,7 +72,7 @@ export function buildProgressExpression(theme, snapshot = {}) {
     html: progressHtml(),
   });
 
-  return `(() => {
+  return `(async () => {
     const payload = ${payload};
     const now = Date.now();
     const visible = (node) => {
@@ -80,7 +89,13 @@ export function buildProgressExpression(theme, snapshot = {}) {
         .filter(Boolean).join(" ").trim().toLowerCase();
       return /(^|\\s)(stop|cancel)(\\s|$)/.test(label) && !/stop sharing/.test(label);
     });
-    const browserState = globalThis.__sparkProgressState ??= { brainStartedAt: null };
+    const browserState = globalThis.__sparkProgressState ??= {
+      brainStartedAt: null,
+      usage: { data: null, fetchedAt: 0, inFlight: null, error: null },
+    };
+    if (!browserState.usage) {
+      browserState.usage = { data: null, fetchedAt: 0, inFlight: null, error: null };
+    }
     const brainWorking = Boolean(stopControl);
     if (brainWorking && !browserState.brainStartedAt) browserState.brainStartedAt = now;
     if (!brainWorking) browserState.brainStartedAt = null;
@@ -97,6 +112,78 @@ export function buildProgressExpression(theme, snapshot = {}) {
       if (value >= 1000) return (value / 1000).toFixed(value >= 10000 ? 0 : 1) + "k";
       return String(Math.round(value));
     };
+    const formatReset = (epochSeconds) => {
+      const epoch = Number(epochSeconds);
+      if (!Number.isFinite(epoch) || epoch <= 0) return "";
+      const date = new Date(epoch * 1000);
+      const secondsAway = Math.floor((date.getTime() - Date.now()) / 1000);
+      if (secondsAway < 24 * 60 * 60) {
+        return date.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+      }
+      return date.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+    };
+    const usageLabel = (windowMinutes, fallback) => {
+      const minutes = Number(windowMinutes);
+      if (Math.abs(minutes - 300) <= 1) return "5H";
+      if (Math.abs(minutes - 10080) <= 1) return "WK";
+      if (Number.isFinite(minutes) && minutes > 0 && minutes % 1440 === 0) return Math.round(minutes / 1440) + "D";
+      if (Number.isFinite(minutes) && minutes > 0 && minutes % 60 === 0) return Math.round(minutes / 60) + "H";
+      return fallback;
+    };
+    const parseUsageWindow = (windowValue) => {
+      if (!windowValue) return null;
+      const usedPercent = Number(windowValue.used_percent ?? 0);
+      const windowMinutes = windowValue.limit_window_seconds == null ? null : Number(windowValue.limit_window_seconds) / 60;
+      return {
+        usedPercent: Number.isFinite(usedPercent) ? usedPercent : 0,
+        remainingPercent: Math.max(0, Math.min(100, 100 - (Number.isFinite(usedPercent) ? usedPercent : 0))),
+        windowMinutes: Number.isFinite(windowMinutes) ? windowMinutes : null,
+        resetAt: windowValue.reset_at ?? null,
+      };
+    };
+    const usageState = browserState.usage;
+    const refreshUsage = async () => {
+      try {
+        const moduleUrl = Array.from(document.querySelectorAll('script[src],link[rel="modulepreload"],link[rel="preload"]'))
+          .map((node) => node.src || node.href)
+          .find((url) => /\\/assets\\/app-initial-[^/]+\\.js(?:$|\\?)/.test(url || ""));
+        if (!moduleUrl) throw new Error("app-initial module not found");
+        const appModule = await import(moduleUrl);
+        const client = Object.values(appModule).find((candidate) => {
+          if (!candidate || typeof candidate !== "object") return false;
+          if (typeof candidate.safeGet !== "function" || typeof candidate.safePost !== "function" || typeof candidate.safeDelete !== "function") return false;
+          if (typeof candidate.getRequestTarget !== "function") return false;
+          try {
+            const target = candidate.getRequestTarget("/wham/usage");
+            return target?.url === "/wham/usage" && target?.headers?.originator === "Codex Desktop";
+          } catch {
+            return false;
+          }
+        });
+        if (!client) throw new Error("authenticated ChatGPT request client not found");
+        const timeout = new Promise((_, reject) => setTimeout(() => reject(new Error("usage request timeout")), 2500));
+        const response = await Promise.race([client.safeGet("/wham/usage"), timeout]);
+        const rateLimit = response?.rate_limit ?? null;
+        usageState.data = {
+          planType: response?.plan_type ?? null,
+          primary: parseUsageWindow(rateLimit?.primary_window),
+          secondary: parseUsageWindow(rateLimit?.secondary_window),
+        };
+        usageState.fetchedAt = Date.now();
+        usageState.error = null;
+      } catch (error) {
+        usageState.error = error instanceof Error ? error.message : String(error);
+        usageState.fetchedAt = Date.now();
+      } finally {
+        usageState.inFlight = null;
+      }
+    };
+    if (!usageState.inFlight && (usageState.fetchedAt === 0 || now - usageState.fetchedAt >= 30000)) {
+      usageState.inFlight = refreshUsage();
+    }
+    if (!usageState.data && usageState.inFlight) {
+      await usageState.inFlight;
+    }
 
     let style = document.getElementById(payload.styleId);
     if (!style) {
@@ -113,23 +200,38 @@ export function buildProgressExpression(theme, snapshot = {}) {
       root.setAttribute("aria-hidden", "true");
       root.innerHTML = payload.html;
       document.body?.appendChild(root);
+    } else if (!root.querySelector('[data-k="usage-box"]')) {
+      root.innerHTML = payload.html;
     }
 
     const aside = document.querySelector("aside.app-shell-left-panel") || document.querySelector("aside");
     const topPanel = root.querySelector('[data-k="top-panel"]');
     const bottomPanel = root.querySelector('[data-k="bottom-panel"]');
+    const modeControl = controls.find((node) => (node.getAttribute("aria-label") || "").startsWith("Switch mode"));
+    const searchControl = controls.find((node) => node.getAttribute("aria-label") === "Search");
+    const workspaceControl = controls.find((node) => node.getAttribute("aria-label") === "Open profile menu");
+    const updateControl = controls.find((node) => node.getAttribute("aria-label") === "Update" || node.getAttribute("title") === "Update");
     if (aside && visible(aside)) {
       const rect = aside.getBoundingClientRect();
       const enoughWidth = rect.width >= 260;
       if (topPanel) {
-        topPanel.style.display = enoughWidth ? "block" : "none";
-        topPanel.style.left = Math.max(rect.left + 118, rect.right - 195) + "px";
+        const left = Math.ceil(modeControl && visible(modeControl) ? modeControl.getBoundingClientRect().right + 4 : rect.left + 142);
+        const right = Math.floor(searchControl && visible(searchControl) ? searchControl.getBoundingClientRect().left - 4 : rect.right - 78);
+        const width = Math.max(0, right - left);
+        topPanel.style.display = enoughWidth && width >= 92 ? "block" : "none";
+        topPanel.style.left = left + "px";
+        topPanel.style.width = width + "px";
         topPanel.style.top = rect.top + 5 + "px";
       }
       if (bottomPanel) {
-        bottomPanel.style.display = enoughWidth ? "block" : "none";
-        bottomPanel.style.left = Math.max(rect.left + 205, rect.right - 128) + "px";
-        bottomPanel.style.top = Math.max(rect.top + 5, rect.bottom - 50) + "px";
+        const left = Math.ceil(workspaceControl && visible(workspaceControl) ? workspaceControl.getBoundingClientRect().right + 2 : rect.right - 130);
+        const right = Math.floor(updateControl && visible(updateControl) ? updateControl.getBoundingClientRect().left - 3 : rect.right - 4);
+        const width = Math.max(0, right - left);
+        const top = workspaceControl && visible(workspaceControl) ? workspaceControl.getBoundingClientRect().top - 1 : rect.bottom - 50;
+        bottomPanel.style.display = enoughWidth && width >= 78 ? "block" : "none";
+        bottomPanel.style.left = left + "px";
+        bottomPanel.style.width = width + "px";
+        bottomPanel.style.top = Math.max(rect.top + 5, top) + "px";
       }
     } else {
       if (topPanel) topPanel.style.display = "none";
@@ -187,14 +289,30 @@ export function buildProgressExpression(theme, snapshot = {}) {
       }
     }
 
+    const usageBox = root.querySelector('[data-k="usage-box"]');
+    const fallbackBox = root.querySelector('[data-k="fallback-box"]');
+    const usage = usageState.data;
+    const hasUsage = Boolean(usage?.primary || usage?.secondary);
+    if (usageBox) usageBox.style.display = hasUsage ? "block" : "none";
+    if (fallbackBox) fallbackBox.style.display = hasUsage ? "none" : "block";
+    if (hasUsage) {
+      const primary = usage.primary;
+      const secondary = usage.secondary;
+      setText("usage-primary-label", usageLabel(primary?.windowMinutes, "P"));
+      setText("usage-primary-percent", primary ? Math.round(primary.remainingPercent) + "%" : "--");
+      setText("usage-primary-reset", primary ? formatReset(primary.resetAt) : "");
+      setText("usage-secondary-label", usageLabel(secondary?.windowMinutes, "S"));
+      setText("usage-secondary-percent", secondary ? Math.round(secondary.remainingPercent) + "%" : "--");
+      setText("usage-secondary-reset", secondary ? formatReset(secondary.resetAt) : "");
+    }
+
     const modelControl = controls.find((node) => node.getAttribute("aria-label") === "Select ChatGPT model");
     const model = (modelControl?.innerText || modelControl?.textContent || "-").trim().replace(/\\s+/g, " ").slice(0, 18) || "-";
     const turns = Array.from(document.querySelectorAll("[data-turn-key]"));
     const renderedChars = turns.reduce((sum, node) => sum + ((node.innerText || node.textContent || "").length), 0);
     const estimatedTokens = Math.round(renderedChars / 3.2);
     setText("model", model);
-    setText("chat-chars", formatCompact(renderedChars) + "C");
-    setText("chat-tokens", "~" + formatCompact(estimatedTokens));
+    setText("chat-summary", formatCompact(renderedChars) + "C/~" + formatCompact(estimatedTokens) + "T");
 
     return {
       rootPresent: Boolean(document.getElementById(payload.rootId)),
@@ -205,6 +323,11 @@ export function buildProgressExpression(theme, snapshot = {}) {
       renderedChars,
       estimatedTokens,
       sidebarAttached: Boolean(aside && visible(aside)),
+      usageAvailable: hasUsage,
+      usagePrimaryRemaining: usage?.primary?.remainingPercent ?? null,
+      usageSecondaryRemaining: usage?.secondary?.remainingPercent ?? null,
+      usagePlanType: usage?.planType ?? null,
+      usageError: usageState.error,
     };
   })()`;
 }
