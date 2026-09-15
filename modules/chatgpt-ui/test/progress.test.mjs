@@ -16,7 +16,9 @@ test('progress overlay expression carries only bounded activity metadata',()=>{
   });
   assert.match(expression,new RegExp(PROGRESS_ROOT_ID));
   assert.match(expression,/run_command/);
-  assert.match(expression,/provider metrics unavailable/);
+  assert.match(expression,/Select ChatGPT model/);
+  assert.match(expression,/data-turn-key/);
+  assert.match(expression,/sidebarAttached/);
   assert.match(expression,/brainWorking/);
   assert.doesNotMatch(expression,/targetPath|commandArgs|Authorization: Bearer/);
 });

@@ -1,5 +1,6 @@
 param([string]$ConfigPath)
 $ErrorActionPreference='Stop'
+$ProgressPreference='SilentlyContinue'
 $root=Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path)
 $boundedProcess=Join-Path $root 'modules\transport\src\bounded-process-cli.mjs'
 

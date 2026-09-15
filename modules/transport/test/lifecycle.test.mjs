@@ -62,7 +62,9 @@ test('Windows lifecycle scripts preserve help/init/start/restart/status/stop con
   assert.match(cmd, /if "%~1"=="" goto :usage/i);
   assert.match(cmd, /if \/I "%~1"=="init" goto :init/i);
   assert.match(cmd, /if \/I "%~1"=="auth" goto :auth/i);
-  assert.match(cmd, /if \/I "%~1"=="restart" goto :restart/i);
+  assert.match(cmd, /if \/I "%~1"=="restart" powershell\.exe .*stop-all\.ps1/i);
+  assert.match(cmd, /if \/I "%~1"=="restart" powershell\.exe .*start-all\.ps1/i);
+  assert.doesNotMatch(cmd, /goto :restart|^:restart$/im);
   assert.match(init, /auth-cli\.mjs/);
   assert.match(init, /\$authCli generate --json/);
   assert.match(init, /refusing to overwrite/i);

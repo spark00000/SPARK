@@ -6,7 +6,10 @@ if "%~1"=="" goto :usage
 
 if /I "%~1"=="init" goto :init
 if /I "%~1"=="start" goto :start
-if /I "%~1"=="restart" goto :restart
+if /I "%~1"=="restart" powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\stop-all.ps1"
+if /I "%~1"=="restart" if errorlevel 1 exit /b %ERRORLEVEL%
+if /I "%~1"=="restart" powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\start-all.ps1"
+if /I "%~1"=="restart" exit /b %ERRORLEVEL%
 if /I "%~1"=="status" goto :status
 if /I "%~1"=="stop" goto :stop
 if /I "%~1"=="validate" goto :validate
@@ -24,12 +27,6 @@ exit /b %ERRORLEVEL%
 
 :start
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\start-all.ps1"
-exit /b %ERRORLEVEL%
-
-:restart
-call "%~f0" stop
-if errorlevel 1 exit /b %ERRORLEVEL%
-call "%~f0" start
 exit /b %ERRORLEVEL%
 
 :status
