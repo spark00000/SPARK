@@ -23,18 +23,22 @@
 | distinct per-user/device tunnel + per-instance credential architecture | PASS — architecture/implementation boundary documented |
 | central SPARK payload relay absent | PASS |
 | ChatGPT UI progress overlay source regression | PASS |
-| ChatGPT Windows DOM progress experiment | PASS — `BRAIN IDLE`, `SPARK run_command 12s/30s`, 40% observed then removed |
-| exact usage telemetry transparency | PASS — UI reports unavailable rather than fabricating token/credit values |
+| ChatGPT Windows DOM progress experiment | PASS — sidebar top/bottom panels remain visible without covering Search/Update; Brain/SPARK states update live |
+| popup-free provider usage telemetry | PASS — authenticated ChatGPT Desktop background `GET /wham/usage` source read without opening the Usage popup; live values `5H 100%`, `WK 76%` matched the provider popup |
+| provider-usage failure behavior | PASS — 30-second cache/fail-soft refresh with local/model/chat fallback; no fabricated quota values |
 | ChatGPT UI PowerShell-BOM runtime JSON compatibility | PASS |
+| tunnel-readiness console progress suppression | PASS — PowerShell web-request progress UI hidden while polling/watchdogs remain active |
+| `SPARK.cmd restart` label simplification | PASS — recursive `call`/`:restart` dependency removed; direct stop → start lifecycle path |
 | private config/runtime excluded from Git | PASS |
 | tracked `.gitignore` excludes `_pArc/`, `.runtime/`, `.SPARK.wiki`, private config without local-exclude dependency | PASS |
 | local Node regression | PASS — candidate source |
 | ChatGPT UI validate | PASS — candidate source |
 | PowerShell parser gate | PASS — start/stop/init/bootstrap/validator/ChatGPT UI scripts |
-| Windows live `SPARK.cmd validate` after restart onto 0.0.1 source | PENDING final live gate |
+| integrated 0.0.1 runtime stop/start + Transport/Tunnel/ChatGPT UI recovery | PASS — live runtime restored and SPARK tools/UI watcher remained usable |
+| Windows live `SPARK.cmd validate` after restart onto active 0.0.1 source | PASS — CRUD/write/modify/copy/move/run_command/traversal rejection/Recycle Bin file+directory completed on the live runtime |
 | ChatGPT `Access token / API key` own-key success / foreign-key denial | **PENDING final multi-user gate** |
-| Ubuntu Node 24 CI on candidate commit | PASS — run `34907410144` |
-| Windows Node 24 CI on candidate commit | PASS — run `34907410144` |
+| Ubuntu Node 24 CI on usage-overlay code head `f8a9972` | PASS — run `35020324238` |
+| Windows Node 24 CI on usage-overlay code head `f8a9972` | PASS — run `35020324238` |
 | ProcessService filesystem/network confinement outside FileService roots | **TBD / KNOWN GAP** — current `X` gates cwd only; child authority remains ambient OS-user authority |
 | hostile process on the same local PC calling loopback SPARK | **TBD** — explicitly outside 0.0.1 remote/workspace-user isolation scope |
 | Independent Architecture Peer | PENDING — process gate |
@@ -68,11 +72,11 @@ Exact candidate SHA, CI run IDs and final live runtime acceptance belong in loca
 - **DEBT-004 / TBD:** same-PC hostile local-process isolation remains deferred; 0.0.1 prioritizes remote/workspace-user cross-access prevention.
 - **DEPLOY-001:** 0.0.1 uses one distinct Secure MCP Tunnel and one high-entropy bearer credential per SPARK instance. It intentionally has no SPARK-operated central payload relay or OAuth service.
 - **DEPLOY-002:** the raw per-instance access key is an initial connection secret. Normal SPARK config stores only its SHA-256 digest. Manual generation/rotation remains possible with `SPARK auth generate`.
-- **UX-001 / EXPERIMENTAL:** Brain working indication is a ChatGPT DOM heuristic and may require adaptation when the provider UI changes. SPARK watchdog progress is measured locally; provider token/credit values are not invented when unavailable.
+- **UX-001 / EXPERIMENTAL:** Brain working indication is a ChatGPT DOM heuristic and may require adaptation when the provider UI changes. SPARK watchdog progress is measured locally. ChatGPT quota telemetry currently reuses the provider's authenticated internal `/wham/usage` client/query and therefore may break when the desktop app changes; it must fail soft and never fabricate quota values. The usage integration is UX-only and is not part of the Agent Core or authorization boundary.
 - **PROCESS-001:** Independent Architecture Peer review has not been executed in this authoring context.
 
 ## 3. Gate Conclusion
 
-**0.0.1 source-level release-candidate gate: PASS locally, subject to the pending final live and CI gates listed above.**
+**0.0.1 source-level release-candidate gate: PASS locally; cross-platform CI, integrated runtime recovery, and live Windows `SPARK.cmd validate` are PASS. The only remaining release blocker is the user-scoped ChatGPT Bearer own-key/wrong-key E2E.**
 
-This is **not yet the final 0.0.1 baseline** and does not authorize creating/moving `v0.0.1` until the candidate commit passes cross-platform CI and the user-scoped ChatGPT bearer-key E2E. ProcessService filesystem/network confinement and same-PC hostile-process isolation remain explicit deferred gaps rather than implied guarantees.
+This is **not yet the final 0.0.1 baseline** and does not authorize creating/moving `v0.0.1` until that Bearer E2E passes. ProcessService filesystem/network confinement and same-PC hostile-process isolation remain explicit deferred gaps rather than implied guarantees.
